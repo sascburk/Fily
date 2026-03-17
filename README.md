@@ -8,20 +8,6 @@ Runs on **macOS**, **Linux** and **Windows** — yes, all three. We're not picky
 
 ## Features
 
-<<<<<<< HEAD
-- Detailansicht mit Name, Änderungsdatum, Größe, Typ
-- Favoritenleiste (Drag & Drop zum Sortieren)
-- Tab-basiertes Browsen (mehrere Ordner gleichzeitig)
-- Vollständige Tastaturnavigation (Tab, Pfeiltasten, Alt+← / →)
-- Kopieren, Ausschneiden, Einfügen mit Fortschrittsanzeige
-- Umbenennen, Mehrfach-Umbenennen mit Muster (`{name}_{n:03d}{ext}`)
-- Undo für Umbenennen, Verschieben, Kopieren, Neuer Ordner
-- Versteckte Dateien ein-/ausblenden (wird gespeichert)
-- Suche im aktuellen Ordner
-- In Papierkorb legen (plattformübergreifend via `send2trash`)
-- Liquid-Glass-Seitenleiste (Dark & Light Mode)
-- Letzten Pfad beim nächsten Start wiederherstellen
-=======
 - Detail view with name, date, size, and type (the boring but important stuff)
 - Favorites sidebar — drag & drop to sort, because order matters
 - Tab-based browsing — juggle multiple folders like a pro
@@ -34,7 +20,6 @@ Runs on **macOS**, **Linux** and **Windows** — yes, all three. We're not picky
 - Trash support via `send2trash` — cross-platform and guilt-free deletion
 - Liquid-glass sidebar (Dark & Light Mode) — looks good, works good
 - Restores last path on startup — picks up right where you left off
->>>>>>> 5435b50 (Change Readme Language to English)
 - Open Source (MIT) · [Buy me a coffee ☕](https://buymeacoffee.com/buged86o)
 
 ---
@@ -236,22 +221,7 @@ No subscription. No upsell. Just coffee. ☕
 
 ---
 
-<<<<<<< HEAD
-## Lizenz
-
-MIT License — kostenlos, Open Source, für jeden frei nutzbar.
-
-Wenn dir Fily gefällt, freue ich mich über einen Kaffee:
-**[☕ buymeacoffee.com/saschaburkard](https://buymeacoffee.com/buged86o)**
-
-Quellcode: **[github.com/saschaburkard/fily](https://github.com/saschaburkard/fily)**
-
----
-
-## Projektstruktur
-=======
 ## Project Structure
->>>>>>> 5435b50 (Change Readme Language to English)
 
 ```
 fily/
