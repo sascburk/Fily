@@ -19,7 +19,7 @@ Läuft auf **macOS**, **Linux** und **Windows**.
 - In Papierkorb legen (plattformübergreifend via `send2trash`)
 - Liquid-Glass-Seitenleiste (Dark & Light Mode)
 - Letzten Pfad beim nächsten Start wiederherstellen
-- Open Source (MIT) · [Buy me a coffee ☕](https://buymeacoffee.com/saschaburkard)
+- Open Source (MIT) · [Buy me a coffee ☕](https://buymeacoffee.com/buged86o)
 
 ---
 
@@ -241,7 +241,7 @@ done
 MIT License — kostenlos, Open Source, für jeden frei nutzbar.
 
 Wenn dir Fily gefällt, freue ich mich über einen Kaffee:
-**[☕ buymeacoffee.com/saschaburkard](https://buymeacoffee.com/saschaburkard)**
+**[☕ buymeacoffee.com/saschaburkard](https://buymeacoffee.com/buged86o)**
 
 Quellcode: **[github.com/saschaburkard/fily](https://github.com/saschaburkard/fily)**
 
