@@ -1791,6 +1791,11 @@ class MainWindow(QMainWindow):
 # Einstiegspunkt
 # ──────────────────────────────────────────────────────────────────────────────
 def main():
+    # Linux: GNOME-Dark-Mode-Support via qt6-qgnomeplatform / adwaita-qt6.
+    # Muss vor QApplication gesetzt werden. Überschreibt keine bereits gesetzte Variable.
+    if sys.platform.startswith("linux"):
+        os.environ.setdefault("QT_QPA_PLATFORMTHEME", "gnome")
+
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(ORG_NAME)

@@ -91,8 +91,11 @@ codesign --deep --force --verify --verbose \
 **Requirements:** `python3-dev`, `libxcb-*` packages
 
 ```bash
+# Fedora (empfohlen — aktiviert Dark Mode Unterstützung)
+sudo dnf install python3-devel python3-virtualenv adwaita-qt6
+
 # Ubuntu / Debian
-sudo apt install python3-dev python3-venv libxcb-xinerama0
+sudo apt install python3-dev python3-venv libxcb-xinerama0 adwaita-qt6
 
 # Setup
 python3 -m venv .venv
