@@ -1832,10 +1832,27 @@ def _apply_dark_palette(app: QApplication) -> None:
     app.setPalette(p)
 
 
+def _asset_path(*parts: str) -> Path:
+    """Resolve a path inside assets/ — works both from source and PyInstaller bundle."""
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
+    return base.joinpath(*parts)
+
+
 def main():
+    # Ubuntu: disable global AppMenu integration — prevents menu bar from
+    # disappearing immediately after click (BAMF/Unity proxy hijacks Qt menus).
+    if sys.platform.startswith("linux"):
+        os.environ["UBUNTU_MENUPROXY"] = "0"
+
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(ORG_NAME)
+
+    # App-Icon setzen (Taskleiste / Dock / Alt+Tab)
+    if sys.platform.startswith("linux"):
+        icon_path = _asset_path("assets", "icons", "linux", "256x256.png")
+        if icon_path.exists():
+            app.setWindowIcon(QIcon(str(icon_path)))
 
     # Linux: detect GNOME dark mode and apply Fusion dark palette if needed.
     if sys.platform.startswith("linux") and _linux_is_dark():

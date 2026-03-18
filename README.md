@@ -38,7 +38,7 @@ Runs on **macOS**, **Linux** and **Windows** — yes, all three. We're not picky
 ## Installation (Development)
 
 ```bash
-git clone https://github.com/saschaburkard/fily.git
+git clone https://github.com/sascburk/fily.git
 cd fily
 
 # Create virtual environment
