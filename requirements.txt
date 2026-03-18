@@ -1,6 +1,6 @@
 # Python 3.13+ empfohlen. PySide6 6.10+ für Qt 6.
-PySide6>=6.10.2
-pyinstaller>=6.0.0
-send2trash>=1.8.0
+PySide6==6.10.2
+pyinstaller==6.19.0
+send2trash==2.1.0
 # macOS only:
 pyobjc-framework-Cocoa>=12.1; sys_platform == "darwin"

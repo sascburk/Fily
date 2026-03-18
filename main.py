@@ -1849,7 +1849,20 @@ def main():
     app.setOrganizationName(ORG_NAME)
 
     # App-Icon setzen (Taskleiste / Dock / Alt+Tab)
-    if sys.platform.startswith("linux"):
+    if sys.platform == "win32":
+        # Windows: .ico verwenden; AppUserModelID setzen damit Taskleiste
+        # das Icon der .exe zuordnet (statt Python-Interpreter-Icon).
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "com.fily.app"
+            )
+        except Exception:
+            pass
+        icon_path = _asset_path("assets", "icons", "windows", "icon.ico")
+        if icon_path.exists():
+            app.setWindowIcon(QIcon(str(icon_path)))
+    elif sys.platform.startswith("linux"):
         icon_path = _asset_path("assets", "icons", "linux", "256x256.png")
         if icon_path.exists():
             app.setWindowIcon(QIcon(str(icon_path)))
