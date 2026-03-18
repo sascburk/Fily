@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem,
 )
 from PySide6.QtCore import (
-    Qt, QModelIndex, QAbstractListModel, Signal, QTimer, QSettings,
+    Qt, QObject, QModelIndex, QAbstractListModel, Signal, QTimer, QSettings,
     QMimeData, QUrl, QDir, QFileInfo, QSize, QThread, QEvent,
     QItemSelectionModel,
 )
@@ -327,7 +327,8 @@ class FavoritesPanel(QWidget):
         self._header = QLabel("  Favoriten")
         self._header.setFixedHeight(34)
         hf = self._header.font()
-        hf.setPointSize(11)
+        if hf.pointSize() > 0:
+            hf.setPointSize(11)
         hf.setBold(True)
         self._header.setFont(hf)
         self._header.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -335,10 +336,16 @@ class FavoritesPanel(QWidget):
 
         self.view = QListView()
         self.view.setFrameShape(QFrame.Shape.NoFrame)
+        self.view.setStyleSheet(
+            "QListView { background: transparent; border: none; }"
+            "QListView::item:selected:active  { background: palette(highlight); color: palette(highlighted-text); }"
+            "QListView::item:selected:!active { background: palette(mid); color: palette(text); }"
+        )
         self.view.setSpacing(2)
         self.view.setIconSize(QSize(22, 22))
         vf = self.view.font()
-        vf.setPointSize(13)
+        if vf.pointSize() > 0:
+            vf.setPointSize(13)
         self.view.setFont(vf)
         self.view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.view.setDragEnabled(True)
@@ -350,7 +357,6 @@ class FavoritesPanel(QWidget):
         self.view.customContextMenuRequested.connect(self._ctx_menu)
         self.view.clicked.connect(self._clicked)
         self.view.installEventFilter(self)
-        self.view.setStyleSheet("QListView { background: transparent; border: none; }")
         self.view.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         self.model = FavoritesModel()
@@ -362,6 +368,7 @@ class FavoritesPanel(QWidget):
         self.btn_add.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self.btn_add.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.btn_add.setFixedHeight(30)
+        self.btn_add.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.btn_add.setStyleSheet("QToolButton { background: transparent; border: none; font-size: 12px; }")
         self.btn_add.clicked.connect(self._add_dialog)
         layout.addWidget(self.btn_add)
@@ -549,6 +556,14 @@ class ExplorerTreeView(QTreeView):
 
     _SEL = QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Rows
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # Selektionsfarbe bleibt blau — auch wenn der Fokus woanders ist
+        self.setStyleSheet(
+            "QTreeView::item:selected:active  { background: palette(highlight); color: palette(highlighted-text); }"
+            "QTreeView::item:selected:!active { background: palette(mid); color: palette(text); }"
+        )
+
     def _select(self, idx):
         """Setzt Cursor UND visuelle Selektion (blau) auf idx."""
         self.setCurrentIndex(idx)
@@ -685,11 +700,15 @@ class FileBrowser(QWidget):
         def nav_btn(tip, arrow=None, text=None):
             btn = QToolButton()
             btn.setToolTip(tip)
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             if arrow:
                 btn.setArrowType(arrow)
             if text:
                 btn.setText(text)
-                btn.setFont(QFont("Arial", 13))
+                f = btn.font()
+                if f.pointSize() > 0:
+                    f.setPointSize(13)
+                btn.setFont(f)
             btn.setFixedSize(28, 28)
             return btn
 
@@ -770,7 +789,8 @@ class FileBrowser(QWidget):
         self.status = QLabel()
         self.status.setFixedHeight(20)
         f = self.status.font()
-        f.setPointSize(10)
+        if f.pointSize() > 0:
+            f.setPointSize(10)
         self.status.setFont(f)
         self.status.setForegroundRole(QPalette.ColorRole.PlaceholderText)
         self.status.setContentsMargins(8, 0, 8, 0)
@@ -786,6 +806,7 @@ class FileBrowser(QWidget):
             (Qt.Key.Key_F5,                         self.refresh),
             (Qt.Key.Key_F2,                         self._rename),
             (Qt.Key.Key_Delete,                     self._delete),
+            (Qt.Modifier.META | Qt.Key.Key_Backspace, self._delete),  # macOS: Cmd+Backspace
             (Qt.Modifier.CTRL | Qt.Key.Key_C,      self._copy),
             (Qt.Modifier.CTRL | Qt.Key.Key_X,      self._cut),
             (Qt.Modifier.CTRL | Qt.Key.Key_V,      self._paste),
@@ -1282,9 +1303,98 @@ class FileBrowser(QWidget):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Tastaturkürzel-Dialog
+# ──────────────────────────────────────────────────────────────────────────────
+def _shortcut_table() -> list[tuple[str, str]]:
+    """Gibt plattformspezifische Tastaturkürzel zurück."""
+    is_mac = sys.platform == "darwin"
+    cmd    = "Cmd" if is_mac else "Ctrl"
+    delete = "Cmd+Backspace" if is_mac else "Delete"
+
+    return [
+        ("Navigation", ""),
+        ("Ordner öffnen",          "Enter / Doppelklick"),
+        ("Zurück",                 "Alt+←"),
+        ("Vor",                    "Alt+→"),
+        ("Übergeordneter Ordner",  "Alt+↑  /  Backspace"),
+        ("Adressleiste fokussieren", f"{cmd}+L  /  F4"),
+        ("Suche fokussieren",      f"{cmd}+F"),
+        ("Neuer Tab",              f"{cmd}+T"),
+        ("Tab schließen",          f"{cmd}+W"),
+        ("Nächster Tab",           "Cmd+Shift+→" if is_mac else "Ctrl+Tab"),
+        ("Vorheriger Tab",         "Cmd+Shift+←" if is_mac else "Ctrl+Shift+Tab"),
+        ("Aktualisieren",          "F5"),
+        ("", ""),
+        ("Auswahl", ""),
+        ("Alle auswählen",         f"{cmd}+A"),
+        ("Nächstes Element",       "Tab"),
+        ("Vorheriges Element",     "Shift+Tab"),
+        ("", ""),
+        ("Bearbeiten", ""),
+        ("Kopieren",               f"{cmd}+C"),
+        ("Ausschneiden",           f"{cmd}+X"),
+        ("Einfügen",               f"{cmd}+V"),
+        ("Umbenennen",             "F2"),
+        ("In Papierkorb",          delete),
+        ("Rückgängig",             f"{cmd}+Z"),
+        ("Neuer Ordner",           f"{cmd}+N"),
+        ("", ""),
+        ("Sonstiges", ""),
+        ("Beenden",                f"{cmd}+Q"),
+    ]
+
+
+class ShortcutsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Tastaturkürzel")
+        self.setMinimumWidth(420)
+        layout = QVBoxLayout(self)
+
+        table = QTableWidget(self)
+        table.setColumnCount(2)
+        table.setHorizontalHeaderLabels(["Aktion", "Kürzel"])
+        table.horizontalHeader().setStretchLastSection(True)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        table.setShowGrid(False)
+        table.setAlternatingRowColors(True)
+
+        rows = _shortcut_table()
+        table.setRowCount(len(rows))
+        for i, (action, shortcut) in enumerate(rows):
+            if action == "" and shortcut == "":
+                # Leerzeile
+                table.setRowHeight(i, 6)
+                table.setItem(i, 0, QTableWidgetItem(""))
+                table.setItem(i, 1, QTableWidgetItem(""))
+            elif shortcut == "":
+                # Kategorie-Überschrift
+                item = QTableWidgetItem(f"  {action}")
+                font = item.font()
+                font.setBold(True)
+                item.setFont(font)
+                table.setItem(i, 0, item)
+                table.setItem(i, 1, QTableWidgetItem(""))
+                table.setRowHeight(i, 22)
+            else:
+                table.setItem(i, 0, QTableWidgetItem(f"    {action}"))
+                sc_item = QTableWidgetItem(shortcut)
+                sc_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                table.setItem(i, 1, sc_item)
+
+        layout.addWidget(table)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        btns.accepted.connect(self.accept)
+        layout.addWidget(btns)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Über-Dialog
 # ──────────────────────────────────────────────────────────────────────────────
-BUYMEACOFFEE_URL = "https://buymeacoffee.com/saschaburkard"
+BUYMEACOFFEE_URL = "https://buymeacoffee.com/buged86o"
 GITHUB_URL       = "https://github.com/saschaburkard/fily"
 
 class AboutDialog(QDialog):
@@ -1299,7 +1409,7 @@ class AboutDialog(QDialog):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
-        version = QLabel("Version 1.0.0")
+        version = QLabel("Version 1.1.0")
         version.setAlignment(Qt.AlignmentFlag.AlignCenter)
         version.setStyleSheet("color: gray; font-size: 11px;")
         layout.addWidget(version)
@@ -1333,6 +1443,41 @@ class AboutDialog(QDialog):
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
         btns.accepted.connect(self.accept)
         layout.addWidget(btns)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# App-weiter Event-Filter für Ctrl+Tab (macOS schluckt es sonst auf Systemebene)
+# ──────────────────────────────────────────────────────────────────────────────
+class _CtrlTabFilter(QObject):
+    def __init__(self, window):
+        super().__init__()
+        self._win = window
+
+    def eventFilter(self, obj, event):
+        # macOS liefert ShortcutOverride VOR KeyPress — beide abfangen
+        if event.type() not in (QEvent.Type.KeyPress, QEvent.Type.ShortcutOverride):
+            return False
+        focused = QApplication.focusWidget()
+        if isinstance(focused, QLineEdit):
+            return False
+        mod = event.modifiers()
+        key = event.key()
+        if sys.platform == "darwin":
+            cmd_shift = Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier
+            if mod == cmd_shift and key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+                if event.type() == QEvent.Type.KeyPress:
+                    if key == Qt.Key.Key_Left:
+                        self._win._prev_tab()
+                    else:
+                        self._win._next_tab()
+                return True  # ShortcutOverride ebenfalls konsumieren
+        else:
+            if mod & Qt.KeyboardModifier.ControlModifier and key == Qt.Key.Key_Tab:
+                if event.type() == QEvent.Type.KeyPress:
+                    shift = bool(mod & Qt.KeyboardModifier.ShiftModifier)
+                    self._win._prev_tab() if shift else self._win._next_tab()
+                return True
+        return False
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1379,6 +1524,7 @@ class MainWindow(QMainWindow):
         btn_new_tab = QToolButton()
         btn_new_tab.setText(" + ")
         btn_new_tab.setToolTip("Neuer Tab  (Ctrl+T)")
+        btn_new_tab.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         btn_new_tab.clicked.connect(self._new_tab)
         self.tabs.setCornerWidget(btn_new_tab, Qt.Corner.TopRightCorner)
 
@@ -1386,7 +1532,6 @@ class MainWindow(QMainWindow):
         s = QSettings(ORG_NAME, "MainWindow")
         start_path = s.value("last_path", str(Path.home()))
         self._add_tab(start_path)
-
         self.fav_panel.navigate.connect(self._fav_navigate)
 
         self.splitter.addWidget(self.fav_panel)
@@ -1424,6 +1569,21 @@ class MainWindow(QMainWindow):
         w = self.tabs.currentWidget()
         return w if isinstance(w, FileBrowser) else None
 
+    def focusNextPrevChild(self, next_: bool) -> bool:
+        """4-Stop Tab-Reihenfolge: Favoriten → Adresse → Suche → Inhalt → zurück."""
+        cur = self.current_browser
+        if cur is None:
+            return super().focusNextPrevChild(next_)
+        stops = [self.fav_panel.view, cur.addr, cur.search, cur.tree]
+        focused = QApplication.focusWidget()
+        try:
+            idx = stops.index(focused)
+        except ValueError:
+            return super().focusNextPrevChild(next_)
+        next_idx = (idx + (1 if next_ else -1)) % len(stops)
+        stops[next_idx].setFocus(Qt.FocusReason.TabFocusReason)
+        return True
+
     def _fav_navigate(self, path: str):
         cur = self.current_browser
         if cur:
@@ -1437,13 +1597,20 @@ class MainWindow(QMainWindow):
 
     # ── Fensterkürzel (Tab-Navigation) ────────────────────────────────────────
     def _install_window_shortcuts(self):
-        pairs = [
-            ("Ctrl+T", self._new_tab),
-            ("Ctrl+W", lambda: self._close_tab(self.tabs.currentIndex())),
-        ]
-        for key, slot in pairs:
-            sc = QShortcut(QKeySequence(key), self)
-            sc.activated.connect(slot)
+        # Ctrl+T / Ctrl+W werden nur über Menü-Aktionen definiert (kein QShortcut — sonst ambiguous)
+        # Ctrl+Tab via App-Event-Filter (macOS schluckt es sonst auf Systemebene)
+        self._tab_filter = _CtrlTabFilter(self)
+        QApplication.instance().installEventFilter(self._tab_filter)
+
+    def _next_tab(self):
+        n = self.tabs.count()
+        if n > 1:
+            self.tabs.setCurrentIndex((self.tabs.currentIndex() + 1) % n)
+
+    def _prev_tab(self):
+        n = self.tabs.count()
+        if n > 1:
+            self.tabs.setCurrentIndex((self.tabs.currentIndex() - 1) % n)
 
     def _build_menu(self):
         mb = self.menuBar()
@@ -1470,7 +1637,8 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         self._a(m, "Umbenennen",           "F2",      lambda: self.current_browser and self.current_browser._rename())
         self._a(m, "Mehrfach umbenennen",  "",        lambda: self.current_browser and self.current_browser._batch_rename())
-        self._a(m, "In Papierkorb",        "Delete",  lambda: self.current_browser and self.current_browser._delete())
+        trash_sc = "Meta+Backspace" if sys.platform == "darwin" else "Delete"
+        self._a(m, "In Papierkorb", trash_sc, lambda: self.current_browser and self.current_browser._delete())
         m.addSeparator()
         self._a(m, "Rückgängig",           "Ctrl+Z",  lambda: self.current_browser and self.current_browser._undo())
 
@@ -1481,6 +1649,7 @@ class MainWindow(QMainWindow):
         # ── Hilfe ─────────────────────────────────────────────────────────────
         m = mb.addMenu("Hilfe")
         self._a(m, f"Über {APP_NAME} …", callback=self._open_about)
+        self._a(m, "Tastaturkürzel …",   callback=lambda: ShortcutsDialog(self).exec())
         m.addSeparator()
         self._a(m, "☕  Buy me a coffee", callback=lambda: QDesktopServices.openUrl(QUrl(BUYMEACOFFEE_URL)))
         self._a(m, "GitHub", callback=lambda: QDesktopServices.openUrl(QUrl(GITHUB_URL)))

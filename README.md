@@ -251,6 +251,35 @@ fily/
 
 ---
 
+## Keyboard Shortcuts
+
+Full list available in the app under **Help → Keyboard Shortcuts**.
+
+| Action | macOS | Linux / Windows |
+|--------|-------|-----------------|
+| Open folder | Enter / Double-click | Enter / Double-click |
+| Go back | Alt+← | Alt+← |
+| Go forward | Alt+→ | Alt+→ |
+| Parent folder | Alt+↑ / Backspace | Alt+↑ / Backspace |
+| Focus address bar | Cmd+L / F4 | Ctrl+L / F4 |
+| Focus search | Cmd+F | Ctrl+F |
+| New tab | Cmd+T | Ctrl+T |
+| Close tab | Cmd+W | Ctrl+W |
+| Next tab | Cmd+Shift+→ | Ctrl+Tab |
+| Previous tab | Cmd+Shift+← | Ctrl+Shift+Tab |
+| Refresh | F5 | F5 |
+| Select all | Cmd+A | Ctrl+A |
+| Copy | Cmd+C | Ctrl+C |
+| Cut | Cmd+X | Ctrl+X |
+| Paste | Cmd+V | Ctrl+V |
+| Rename | F2 | F2 |
+| Move to trash | Cmd+Backspace | Delete |
+| Undo | Cmd+Z | Ctrl+Z |
+| New folder | Cmd+N | Ctrl+N |
+| Quit | Cmd+Q | Ctrl+Q |
+
+---
+
 ## Contributing
 
 Found a bug? Have an idea? PRs are welcome.
