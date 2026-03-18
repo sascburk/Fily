@@ -100,18 +100,13 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 # Build
-pyinstaller OSX_Explorer.spec
+pyinstaller fily_app.spec
 
 # Run
 ./dist/Fily/Fily
 ```
 
 → Result: `dist/Fily/` folder with binary
-
-**Optional: Single binary**
-```bash
-pyinstaller OSX_Explorer.spec --onefile
-```
 
 **Optional: Desktop entry**
 ```bash
@@ -142,7 +137,7 @@ python -m venv .venv
 pip install -r requirements.txt
 
 # Build
-pyinstaller OSX_Explorer.spec
+pyinstaller fily_app.spec
 
 # Run
 dist\Fily\Fily.exe
@@ -227,7 +222,7 @@ No subscription. No upsell. Just coffee. ☕
 fily/
 ├── main.py                 # The whole app lives here
 ├── requirements.txt        # Python dependencies
-├── OSX_Explorer.spec       # PyInstaller config
+├── fily_app.spec       # PyInstaller config
 ├── build_app.sh            # Build script (macOS/Linux)
 ├── assets/
 │   └── icons/
@@ -269,6 +264,7 @@ Full list available in the app under **Help → Keyboard Shortcuts**.
 | Previous tab | Cmd+Shift+← | Ctrl+Shift+Tab |
 | Refresh | F5 | F5 |
 | Select all | Cmd+A | Ctrl+A |
+| Cycle items | Tab / Shift+Tab | Tab / Shift+Tab |
 | Copy | Cmd+C | Ctrl+C |
 | Cut | Cmd+X | Ctrl+X |
 | Paste | Cmd+V | Ctrl+V |
