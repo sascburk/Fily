@@ -1391,7 +1391,7 @@ class ShortcutsDialog(QDialog):
 # Über-Dialog
 # ──────────────────────────────────────────────────────────────────────────────
 BUYMEACOFFEE_URL = "https://buymeacoffee.com/buged86o"
-GITHUB_URL       = "https://github.com/saschaburkard/fily"
+GITHUB_URL       = "https://github.com/sascburk/fily"
 
 class AboutDialog(QDialog):
     def __init__(self, parent=None):
