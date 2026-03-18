@@ -1790,15 +1790,56 @@ class MainWindow(QMainWindow):
 # ──────────────────────────────────────────────────────────────────────────────
 # Einstiegspunkt
 # ──────────────────────────────────────────────────────────────────────────────
-def main():
-    # Linux: GNOME-Dark-Mode-Support via qt6-qgnomeplatform / adwaita-qt6.
-    # Muss vor QApplication gesetzt werden. Überschreibt keine bereits gesetzte Variable.
-    if sys.platform.startswith("linux"):
-        os.environ.setdefault("QT_QPA_PLATFORMTHEME", "gnome")
+def _linux_is_dark() -> bool:
+    """Detect GNOME dark mode via gsettings (returns False if unavailable)."""
+    try:
+        import subprocess
+        out = subprocess.check_output(
+            ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
+            stderr=subprocess.DEVNULL, timeout=1,
+        ).decode().strip().strip("'\"")
+        return "dark" in out.lower()
+    except Exception:
+        return False
 
+
+def _apply_dark_palette(app: QApplication) -> None:
+    """Apply a Fusion-based dark palette to the QApplication."""
+    from PySide6.QtGui import QColor, QPalette
+    app.setStyle("Fusion")
+    p = QPalette()
+    dark   = QColor(45, 45, 45)
+    mid    = QColor(65, 65, 65)
+    light  = QColor(90, 90, 90)
+    text   = QColor(220, 220, 220)
+    hi     = QColor(42, 130, 218)
+    p.setColor(QPalette.ColorRole.Window,          dark)
+    p.setColor(QPalette.ColorRole.WindowText,      text)
+    p.setColor(QPalette.ColorRole.Base,            QColor(30, 30, 30))
+    p.setColor(QPalette.ColorRole.AlternateBase,   dark)
+    p.setColor(QPalette.ColorRole.ToolTipBase,     dark)
+    p.setColor(QPalette.ColorRole.ToolTipText,     text)
+    p.setColor(QPalette.ColorRole.Text,            text)
+    p.setColor(QPalette.ColorRole.Button,          mid)
+    p.setColor(QPalette.ColorRole.ButtonText,      text)
+    p.setColor(QPalette.ColorRole.BrightText,      QColor(255, 50, 50))
+    p.setColor(QPalette.ColorRole.Link,            hi)
+    p.setColor(QPalette.ColorRole.Highlight,       hi)
+    p.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, light)
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, light)
+    p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text,       light)
+    app.setPalette(p)
+
+
+def main():
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(ORG_NAME)
+
+    # Linux: detect GNOME dark mode and apply Fusion dark palette if needed.
+    if sys.platform.startswith("linux") and _linux_is_dark():
+        _apply_dark_palette(app)
 
     if sys.platform == "darwin":
         app.setApplicationDisplayName(APP_NAME)
