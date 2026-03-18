@@ -41,7 +41,7 @@ rm -rf build dist
 
 # ── 4. PyInstaller ausführen ──────────────────────────────────────────────────
 echo "▶ Baue .app mit PyInstaller …"
-pyinstaller OSX_Explorer.spec
+pyinstaller fily_app.spec
 
 # ── 5. Ergebnis prüfen ────────────────────────────────────────────────────────
 APP="dist/Fily.app"

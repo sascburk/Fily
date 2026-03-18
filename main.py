@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QFrame, QMenu, QMessageBox, QInputDialog, QAbstractItemView,
     QHeaderView, QFileDialog, QSizePolicy, QPushButton,
     QFileSystemModel, QFileIconProvider,
-    QTabWidget, QProgressDialog, QDialog, QDialogButtonBox,
+    QTabWidget, QTabBar, QProgressDialog, QDialog, QDialogButtonBox,
     QTableWidget, QTableWidgetItem,
 )
 from PySide6.QtCore import (
@@ -798,27 +798,14 @@ class FileBrowser(QWidget):
 
     # ── Tastaturkürzel ────────────────────────────────────────────────────────
     def _install_shortcuts(self):
+        # Nur Shortcuts die NICHT im Menü und NICHT im Fenster definiert sind.
+        # Ctrl+F, Ctrl+L, F4 sind in MainWindow._install_window_shortcuts (WindowShortcut),
+        # damit sie auch aus der Favoritenleiste heraus funktionieren.
         pairs = [
-            (Qt.Modifier.ALT | Qt.Key.Key_Left,    self.go_back),
-            (Qt.Modifier.ALT | Qt.Key.Key_Right,   self.go_forward),
-            (Qt.Modifier.ALT | Qt.Key.Key_Up,      self.go_up),
-            (Qt.Key.Key_Backspace,                  self.go_up),
-            (Qt.Key.Key_F5,                         self.refresh),
-            (Qt.Key.Key_F2,                         self._rename),
-            (Qt.Key.Key_Delete,                     self._delete),
-            (Qt.Modifier.META | Qt.Key.Key_Backspace, self._delete),  # macOS: Cmd+Backspace
-            (Qt.Modifier.CTRL | Qt.Key.Key_C,      self._copy),
-            (Qt.Modifier.CTRL | Qt.Key.Key_X,      self._cut),
-            (Qt.Modifier.CTRL | Qt.Key.Key_V,      self._paste),
-            (Qt.Modifier.CTRL | Qt.Key.Key_A,      self.tree.selectAll),
-            (Qt.Modifier.CTRL | Qt.Key.Key_Z,      self._undo),
-            (Qt.Key.Key_Return,                     self._open_sel),
-            (Qt.Key.Key_Enter,                      self._open_sel),
-            (Qt.Key.Key_F4,                         self._focus_addr),
-            (Qt.Modifier.CTRL | Qt.Key.Key_L,      self._focus_addr),
-            (Qt.Modifier.CTRL | Qt.Key.Key_N,      self._new_folder),
-            (Qt.Modifier.CTRL | Qt.Key.Key_F,      self._focus_search),
-            (Qt.Key.Key_Escape,                     self._escape),
+            (Qt.Key.Key_Backspace,  self.go_up),      # Alt+Up ist im Menü
+            (Qt.Key.Key_Return,     self._open_sel),
+            (Qt.Key.Key_Enter,      self._open_sel),
+            (Qt.Key.Key_Escape,     self._escape),
         ]
         for combo, slot in pairs:
             sc = QShortcut(QKeySequence(combo), self)
@@ -1311,36 +1298,44 @@ def _shortcut_table() -> list[tuple[str, str]]:
     cmd    = "Cmd" if is_mac else "Ctrl"
     delete = "Cmd+Backspace" if is_mac else "Delete"
 
+    tab_next = "Cmd+Shift+→" if is_mac else "Ctrl+Tab"
+    tab_prev = "Cmd+Shift+←" if is_mac else "Ctrl+Shift+Tab"
+
     return [
         ("Navigation", ""),
-        ("Ordner öffnen",          "Enter / Doppelklick"),
-        ("Zurück",                 "Alt+←"),
-        ("Vor",                    "Alt+→"),
-        ("Übergeordneter Ordner",  "Alt+↑  /  Backspace"),
+        ("Ordner öffnen",            "Enter / Doppelklick"),
+        ("Zurück",                   "Alt+←"),
+        ("Vor",                      "Alt+→"),
+        ("Übergeordneter Ordner",    f"Alt+↑  /  Backspace"),
         ("Adressleiste fokussieren", f"{cmd}+L  /  F4"),
-        ("Suche fokussieren",      f"{cmd}+F"),
-        ("Neuer Tab",              f"{cmd}+T"),
-        ("Tab schließen",          f"{cmd}+W"),
-        ("Nächster Tab",           "Cmd+Shift+→" if is_mac else "Ctrl+Tab"),
-        ("Vorheriger Tab",         "Cmd+Shift+←" if is_mac else "Ctrl+Shift+Tab"),
-        ("Aktualisieren",          "F5"),
+        ("Suche fokussieren",        f"{cmd}+F"),
+        ("", ""),
+        ("Tabs", ""),
+        ("Neuer Tab",                f"{cmd}+T"),
+        ("Tab schließen",            f"{cmd}+W"),
+        ("Nächster Tab",             tab_next),
+        ("Vorheriger Tab",           tab_prev),
+        ("", ""),
+        ("Ansicht", ""),
+        ("Aktualisieren",            "F5"),
+        ("Versteckte Dateien",       "Rechtsklick → Menü"),
         ("", ""),
         ("Auswahl", ""),
-        ("Alle auswählen",         f"{cmd}+A"),
-        ("Nächstes Element",       "Tab"),
-        ("Vorheriges Element",     "Shift+Tab"),
+        ("Alle auswählen",           f"{cmd}+A"),
+        ("Nächstes Element",         "Tab"),
+        ("Vorheriges Element",       "Shift+Tab"),
         ("", ""),
         ("Bearbeiten", ""),
-        ("Kopieren",               f"{cmd}+C"),
-        ("Ausschneiden",           f"{cmd}+X"),
-        ("Einfügen",               f"{cmd}+V"),
-        ("Umbenennen",             "F2"),
-        ("In Papierkorb",          delete),
-        ("Rückgängig",             f"{cmd}+Z"),
-        ("Neuer Ordner",           f"{cmd}+N"),
+        ("Kopieren",                 f"{cmd}+C"),
+        ("Ausschneiden",             f"{cmd}+X"),
+        ("Einfügen",                 f"{cmd}+V"),
+        ("Umbenennen",               "F2"),
+        ("In Papierkorb",            delete),
+        ("Rückgängig",               f"{cmd}+Z"),
+        ("Neuer Ordner",             f"{cmd}+N"),
         ("", ""),
         ("Sonstiges", ""),
-        ("Beenden",                f"{cmd}+Q"),
+        ("Beenden",                  f"{cmd}+Q"),
     ]
 
 
@@ -1349,6 +1344,7 @@ class ShortcutsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Tastaturkürzel")
         self.setMinimumWidth(420)
+        self.setMinimumHeight(640)
         layout = QVBoxLayout(self)
 
         table = QTableWidget(self)
@@ -1409,7 +1405,7 @@ class AboutDialog(QDialog):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
-        version = QLabel("Version 1.1.0")
+        version = QLabel("Version 1.1.1")
         version.setAlignment(Qt.AlignmentFlag.AlignCenter)
         version.setStyleSheet("color: gray; font-size: 11px;")
         layout.addWidget(version)
@@ -1446,15 +1442,17 @@ class AboutDialog(QDialog):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# App-weiter Event-Filter für Ctrl+Tab (macOS schluckt es sonst auf Systemebene)
+# App-weiter Event-Filter für Tab-Wechsel (macOS: Cmd+Shift+←/→)
+# Auf Windows/Linux wird Ctrl+Tab direkt als WindowShortcut registriert.
 # ──────────────────────────────────────────────────────────────────────────────
 class _CtrlTabFilter(QObject):
+    """Fängt Cmd+Shift+←/→ auf macOS ab (System schluckt Ctrl+Tab)."""
+
     def __init__(self, window):
         super().__init__()
         self._win = window
 
     def eventFilter(self, obj, event):
-        # macOS liefert ShortcutOverride VOR KeyPress — beide abfangen
         if event.type() not in (QEvent.Type.KeyPress, QEvent.Type.ShortcutOverride):
             return False
         focused = QApplication.focusWidget()
@@ -1462,30 +1460,62 @@ class _CtrlTabFilter(QObject):
             return False
         mod = event.modifiers()
         key = event.key()
-        if sys.platform == "darwin":
-            cmd_shift = Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier
-            if mod == cmd_shift and key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
-                if event.type() == QEvent.Type.KeyPress:
-                    if key == Qt.Key.Key_Left:
-                        self._win._prev_tab()
-                    else:
-                        self._win._next_tab()
-                return True  # ShortcutOverride ebenfalls konsumieren
-        else:
-            if mod & Qt.KeyboardModifier.ControlModifier and key == Qt.Key.Key_Tab:
-                if event.type() == QEvent.Type.KeyPress:
-                    shift = bool(mod & Qt.KeyboardModifier.ShiftModifier)
-                    self._win._prev_tab() if shift else self._win._next_tab()
-                return True
+        # Nur macOS: Cmd+Shift+← / Cmd+Shift+→
+        cmd_shift = Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier
+        if mod == cmd_shift and key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+            if event.type() == QEvent.Type.KeyPress:
+                if key == Qt.Key.Key_Left:
+                    self._win._prev_tab()
+                else:
+                    self._win._next_tab()
+            return True  # ShortcutOverride ebenfalls konsumieren
         return False
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Tab-Bar mit Tear-Off (Tab aus Fenster ziehen → neues Fenster)
+# ──────────────────────────────────────────────────────────────────────────────
+class TearOffTabBar(QTabBar):
+    """QTabBar, der bei einem Drag außerhalb des Fensters ein Signal auslöst."""
+
+    tab_detached = Signal(int, object)   # tab-index, QPoint (global)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._press_pos = None
+        self._press_idx = -1
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self._press_pos = e.position().toPoint()
+            self._press_idx = self.tabAt(self._press_pos)
+        super().mousePressEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton and self._press_idx >= 0:
+            release_global = self.mapToGlobal(e.position().toPoint())
+            tab_widget = self.parent()
+            if (
+                isinstance(tab_widget, QTabWidget)
+                and tab_widget.count() > 1
+                and not self.window().frameGeometry().contains(release_global)
+            ):
+                self.tab_detached.emit(self._press_idx, release_global)
+                self._press_idx = -1
+                self._press_pos = None
+                return
+        self._press_idx = -1
+        self._press_pos = None
+        super().mouseReleaseEvent(e)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Hauptfenster
 # ──────────────────────────────────────────────────────────────────────────────
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, _initial_browser=None):
         super().__init__()
+        self._initial_browser = _initial_browser
         self.setWindowTitle(APP_NAME)
         self.setMinimumSize(700, 440)
 
@@ -1515,6 +1545,9 @@ class MainWindow(QMainWindow):
 
         # ── Tab-Widget ────────────────────────────────────────────────────────
         self.tabs = QTabWidget()
+        tear_bar = TearOffTabBar()
+        tear_bar.tab_detached.connect(self._detach_tab)
+        self.tabs.setTabBar(tear_bar)
         self.tabs.setTabsClosable(True)
         self.tabs.setMovable(True)
         self.tabs.setDocumentMode(True)   # macOS-nativer Tab-Stil
@@ -1528,10 +1561,13 @@ class MainWindow(QMainWindow):
         btn_new_tab.clicked.connect(self._new_tab)
         self.tabs.setCornerWidget(btn_new_tab, Qt.Corner.TopRightCorner)
 
-        # Ersten Tab mit Start-Pfad aus QSettings öffnen
+        # Ersten Tab öffnen (ggf. mit übergebenem Browser beim Tear-Off)
         s = QSettings(ORG_NAME, "MainWindow")
-        start_path = s.value("last_path", str(Path.home()))
-        self._add_tab(start_path)
+        if self._initial_browser is not None:
+            self._add_existing_tab(self._initial_browser)
+        else:
+            start_path = s.value("last_path", str(Path.home()))
+            self._add_tab(start_path)
         self.fav_panel.navigate.connect(self._fav_navigate)
 
         self.splitter.addWidget(self.fav_panel)
@@ -1555,6 +1591,34 @@ class MainWindow(QMainWindow):
         idx = self.tabs.addTab(browser, name or "/")
         self.tabs.setCurrentIndex(idx)
         return browser
+
+    def _add_existing_tab(self, browser: "FileBrowser"):
+        """Nimmt einen bestehenden Browser-Widget auf (z. B. nach Tear-Off)."""
+        browser.path_changed.connect(self._path_changed)
+        browser.request_add_fav.connect(self.fav_panel.add_current)
+        name = Path(browser.current_path).name or "/"
+        idx = self.tabs.addTab(browser, name)
+        self.tabs.setCurrentIndex(idx)
+
+    def _detach_tab(self, idx: int, global_pos):
+        """Löst einen Tab aus und öffnet ihn in einem neuen Fenster."""
+        if self.tabs.count() <= 1:
+            return
+        browser = self.tabs.widget(idx)
+        if not isinstance(browser, FileBrowser):
+            return
+        # Signale vom alten Fenster trennen
+        try:
+            browser.path_changed.disconnect(self._path_changed)
+            browser.request_add_fav.disconnect(self.fav_panel.add_current)
+        except RuntimeError:
+            pass
+        self.tabs.removeTab(idx)
+        new_win = MainWindow(_initial_browser=browser)
+        new_win.resize(self.size())
+        new_win.show()
+        new_win.move(global_pos.x() - new_win.width() // 2,
+                     global_pos.y() - 30)
 
     def _new_tab(self):
         cur = self.current_browser
@@ -1598,9 +1662,32 @@ class MainWindow(QMainWindow):
     # ── Fensterkürzel (Tab-Navigation) ────────────────────────────────────────
     def _install_window_shortcuts(self):
         # Ctrl+T / Ctrl+W werden nur über Menü-Aktionen definiert (kein QShortcut — sonst ambiguous)
-        # Ctrl+Tab via App-Event-Filter (macOS schluckt es sonst auf Systemebene)
-        self._tab_filter = _CtrlTabFilter(self)
-        QApplication.instance().installEventFilter(self._tab_filter)
+        win_pairs = [
+            # Fokus-Shortcuts (wirken auch wenn Favoritenleiste den Fokus hat)
+            (Qt.Modifier.CTRL | Qt.Key.Key_F,
+             lambda: self.current_browser and self.current_browser._focus_search()),
+            (Qt.Modifier.CTRL | Qt.Key.Key_L,
+             lambda: self.current_browser and self.current_browser._focus_addr()),
+            (Qt.Key.Key_F4,
+             lambda: self.current_browser and self.current_browser._focus_addr()),
+        ]
+
+        if sys.platform == "darwin":
+            # macOS: Cmd+Shift+←/→ via App-Event-Filter
+            # (System schluckt Ctrl+Tab auf Systemebene)
+            self._tab_filter = _CtrlTabFilter(self)
+            QApplication.instance().installEventFilter(self._tab_filter)
+        else:
+            # Windows / Linux: Ctrl+Tab und Ctrl+Shift+Tab als WindowShortcut
+            win_pairs += [
+                (QKeySequence("Ctrl+Tab"),       self._next_tab),
+                (QKeySequence("Ctrl+Shift+Tab"), self._prev_tab),
+            ]
+
+        for combo, slot in win_pairs:
+            sc = QShortcut(QKeySequence(combo) if isinstance(combo, int) else combo, self)
+            sc.setContext(Qt.ShortcutContext.WindowShortcut)
+            sc.activated.connect(slot)
 
     def _next_tab(self):
         n = self.tabs.count()
