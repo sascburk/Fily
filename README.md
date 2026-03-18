@@ -126,11 +126,12 @@ sudo cp assets/icons/linux/256x256.png /usr/share/pixmaps/fily.png
 sudo ln -s /usr/local/bin/Fily/Fily /usr/local/bin/fily
 
 # Desktop-Eintrag (GNOME Application Menu)
+# Hinweis: absoluter Icon-Pfad — zuverlässiger als Icon-Name (kein Cache-Problem auf Ubuntu)
 cat > ~/.local/share/applications/fily.desktop << EOF
 [Desktop Entry]
 Name=Fily
 Exec=/usr/local/bin/Fily/Fily
-Icon=fily
+Icon=/usr/share/pixmaps/fily.png
 Type=Application
 Categories=Utility;FileManager;
 EOF
