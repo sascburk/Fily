@@ -111,19 +111,37 @@ pyinstaller fily_app.spec
 
 → Result: `dist/Fily/` folder with binary
 
-**Optional: Desktop entry**
+**Optional: System-Installation + GNOME-Menüeintrag**
+
+> `_internal/` muss neben der Binary liegen — nur so funktioniert Dark Mode unter Fedora/GNOME korrekt.
+
 ```bash
-sudo cp dist/Fily/Fily /usr/local/bin/fily
+# Verzeichnis anlegen und Dateien kopieren
+sudo mkdir -p /usr/local/bin/Fily
+sudo cp dist/Fily/Fily /usr/local/bin/Fily/Fily
+sudo cp -r dist/Fily/_internal /usr/local/bin/Fily/
 sudo cp assets/icons/linux/256x256.png /usr/share/pixmaps/fily.png
 
+# Symlink für Kommandozeilen-Aufruf
+sudo ln -s /usr/local/bin/Fily/Fily /usr/local/bin/fily
+
+# Desktop-Eintrag (GNOME Application Menu)
 cat > ~/.local/share/applications/fily.desktop << EOF
 [Desktop Entry]
 Name=Fily
-Exec=/usr/local/bin/fily
+Exec=/usr/local/bin/Fily/Fily
 Icon=fily
 Type=Application
 Categories=Utility;FileManager;
 EOF
+```
+
+Ergebnis:
+```
+/usr/local/bin/Fily/
+├── Fily          ← Binary
+└── _internal/    ← Qt-Libs & Dark-Mode-Support
+/usr/local/bin/fily  →  /usr/local/bin/Fily/Fily  (Symlink)
 ```
 
 ---
