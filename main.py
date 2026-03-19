@@ -1917,14 +1917,15 @@ def main():
 
         # Unterdrücke harmlose GTK-Warnungen über nicht installierte Module
         # (canberra-gtk-module, pk-gtk-module) — diese sind optional und nicht
-        # erforderlich für Fily.
-        os.environ.setdefault("GTK_MODULES", "")
+        # erforderlich für Fily. Erzwungene Überschreibung, da GTK_MODULES oft
+        # von der Desktop-Session geerbt wird.
+        os.environ["GTK_MODULES"] = ""
 
         # Unterdrücke Qt-D-Bus-Portal-Warnung "Could not register app ID"
         # — tritt auf wenn die App via Symlink gestartet wird und die D-Bus-
         # Verbindung bereits eine App-ID hat; die App funktioniert trotzdem.
         _existing_rules = os.environ.get("QT_LOGGING_RULES", "")
-        _portal_rule = "qt.qpa.services.warning=false"
+        _portal_rule = "qt.qpa.services=false"
         if _portal_rule not in _existing_rules:
             os.environ["QT_LOGGING_RULES"] = (
                 f"{_existing_rules};{_portal_rule}" if _existing_rules else _portal_rule
