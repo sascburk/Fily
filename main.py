@@ -1915,6 +1915,21 @@ def main():
         # disappearing immediately after click (BAMF/Unity proxy hijacks Qt menus).
         os.environ["UBUNTU_MENUPROXY"] = "0"
 
+        # Unterdrücke harmlose GTK-Warnungen über nicht installierte Module
+        # (canberra-gtk-module, pk-gtk-module) — diese sind optional und nicht
+        # erforderlich für Fily.
+        os.environ.setdefault("GTK_MODULES", "")
+
+        # Unterdrücke Qt-D-Bus-Portal-Warnung "Could not register app ID"
+        # — tritt auf wenn die App via Symlink gestartet wird und die D-Bus-
+        # Verbindung bereits eine App-ID hat; die App funktioniert trotzdem.
+        _existing_rules = os.environ.get("QT_LOGGING_RULES", "")
+        _portal_rule = "qt.qpa.services.warning=false"
+        if _portal_rule not in _existing_rules:
+            os.environ["QT_LOGGING_RULES"] = (
+                f"{_existing_rules};{_portal_rule}" if _existing_rules else _portal_rule
+            )
+
         # Dark-Mode-Erkennung VOR QApplication, damit QT_STYLE_OVERRIDE greift
         # bevor Qt das Plattform-Theme lädt (Fedora/GNOME überschreibt sonst
         # eine nachträglich gesetzte Palette).
