@@ -1415,7 +1415,7 @@ class AboutDialog(QDialog):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
-        version = QLabel("Version 1.1.2")
+        version = QLabel("Version 1.3.0")
         version.setAlignment(Qt.AlignmentFlag.AlignCenter)
         version.setStyleSheet("color: gray; font-size: 11px;")
         layout.addWidget(version)
@@ -1954,9 +1954,11 @@ def main():
         # das Icon der .exe zuordnet (statt Python-Interpreter-Icon).
         try:
             import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                "com.fily.app"
-            )
+            windll = getattr(ctypes, "windll", None)
+            if windll is not None:
+                windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                    "com.fily.app"
+                )
         except Exception:
             pass
         icon_path = _asset_path("assets", "icons", "windows", "icon.ico")
