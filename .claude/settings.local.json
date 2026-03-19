@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(.venv/bin/python -c \"import ast, sys; ast.parse\\(open\\(''main.py''\\).read\\(\\)\\); ast.parse\\(open\\(''license_manager.py''\\).read\\(\\)\\); print\\(''OK''\\)\")",
-      "Bash(.venv/bin/pip show:*)"
-    ]
-  }
-}
