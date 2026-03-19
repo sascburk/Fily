@@ -27,7 +27,7 @@ if IS_WIN:
 elif IS_MAC:
     icon = 'assets/icons/macos/icon.icns'
 else:
-    icon = 'assets/icons/linux/icon_256.png'
+    icon = 'assets/icons/linux/256x256.png'
 
 a = Analysis(
     ['main.py'],
@@ -45,7 +45,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['gi', 'gtk', 'glib', 'gobject'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -100,9 +100,12 @@ if IS_MAC:
             'NSSupportsAutomaticGraphicsSwitching': True,
             'LSApplicationCategoryType': 'public.app-category.utilities',
             'NSRequiresAquaSystemAppearance': False,
-            'NSDocumentsFolderUsageDescription':  'Dateizugriff für Fily',
-            'NSDownloadsFolderUsageDescription':  'Dateizugriff für Fily',
-            'NSDesktopFolderUsageDescription':    'Dateizugriff für Fily',
+            'NSDocumentsFolderUsageDescription':    'Dateizugriff für Fily',
+            'NSDownloadsFolderUsageDescription':    'Dateizugriff für Fily',
+            'NSDesktopFolderUsageDescription':      'Dateizugriff für Fily',
+            'NSRemovableVolumesUsageDescription':   'Dateizugriff für Fily',
+            'NSNetworkVolumesUsageDescription':     'Dateizugriff für Fily',
+            'NSPicturesFolderUsageDescription':     'Dateizugriff für Fily',
         },
     )
 

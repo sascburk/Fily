@@ -818,6 +818,15 @@ class FileBrowser(QWidget):
         if not os.path.isdir(path):
             QDesktopServices.openUrl(QUrl.fromLocalFile(path))
             return
+        try:
+            os.listdir(path)
+        except PermissionError:
+            if sys.platform == "darwin":
+                _macos_show_fda_dialog(self)
+            else:
+                QMessageBox.warning(self, "Zugriff verweigert",
+                                    f"Kein Zugriff auf:\n{path}")
+            return
         if not (self._history and self._history[self._hist_pos] == path):
             self._history = self._history[: self._hist_pos + 1]
             self._history.append(path)
@@ -1746,10 +1755,6 @@ class MainWindow(QMainWindow):
         self._a(m, "Zurück",       "Alt+Left",  lambda: self.current_browser and self.current_browser.go_back())
         self._a(m, "Vor",          "Alt+Right", lambda: self.current_browser and self.current_browser.go_forward())
         self._a(m, "Übergeordnet", "Alt+Up",    lambda: self.current_browser and self.current_browser.go_up())
-        m.addSeparator()
-        for name, sub in [("Home", ""), ("Desktop", "Desktop"), ("Dokumente", "Documents"), ("Downloads", "Downloads")]:
-            path = str(Path.home() / sub) if sub else str(Path.home())
-            self._a(m, name, callback=lambda p=path: self.current_browser and self.current_browser.navigate(p))
 
     @staticmethod
     def _a(menu: QMenu, text: str, shortcut: str | None = None,
@@ -1791,16 +1796,42 @@ class MainWindow(QMainWindow):
 # Einstiegspunkt
 # ──────────────────────────────────────────────────────────────────────────────
 def _linux_is_dark() -> bool:
-    """Detect GNOME dark mode via gsettings (returns False if unavailable)."""
+    """Erkennt Dark Mode auf Linux: gsettings → GTK-Config-Dateien."""
+    # Methode 1: GNOME gsettings
     try:
-        import subprocess
         out = subprocess.check_output(
             ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
-            stderr=subprocess.DEVNULL, timeout=1,
+            stderr=subprocess.DEVNULL, timeout=2,
         ).decode().strip().strip("'\"")
-        return "dark" in out.lower()
+        if "dark" in out.lower():
+            return True
     except Exception:
-        return False
+        pass
+
+    # Methode 2: dconf-Datenbank direkt lesen (kein D-Bus nötig).
+    # gsettings/dconf speichern den Wert als lesbaren String in der Binärdatei.
+    try:
+        data = (Path.home() / ".config" / "dconf" / "user").read_bytes()
+        if b"prefer-dark" in data:
+            return True
+    except Exception:
+        pass
+
+    # Methode 3: GTK-Config-Datei (~/.config/gtk-4.0 oder gtk-3.0)
+    for conf in [
+        Path.home() / ".config" / "gtk-4.0" / "settings.ini",
+        Path.home() / ".config" / "gtk-3.0" / "settings.ini",
+    ]:
+        try:
+            text = conf.read_text(encoding="utf-8").lower()
+            if "gtk-application-prefer-dark-theme=1" in text or \
+               "gtk-application-prefer-dark-theme=true" in text or \
+               "color-scheme=prefer-dark" in text:
+                return True
+        except Exception:
+            pass
+
+    return False
 
 
 def _apply_dark_palette(app: QApplication) -> None:
@@ -1822,6 +1853,10 @@ def _apply_dark_palette(app: QApplication) -> None:
     p.setColor(QPalette.ColorRole.Text,            text)
     p.setColor(QPalette.ColorRole.Button,          mid)
     p.setColor(QPalette.ColorRole.ButtonText,      text)
+    p.setColor(QPalette.ColorRole.Mid,             mid)
+    p.setColor(QPalette.ColorRole.Midlight,        QColor(75, 75, 75))
+    p.setColor(QPalette.ColorRole.Dark,            QColor(35, 35, 35))
+    p.setColor(QPalette.ColorRole.Shadow,          QColor(20, 20, 20))
     p.setColor(QPalette.ColorRole.BrightText,      QColor(255, 50, 50))
     p.setColor(QPalette.ColorRole.Link,            hi)
     p.setColor(QPalette.ColorRole.Highlight,       hi)
@@ -1838,15 +1873,64 @@ def _asset_path(*parts: str) -> Path:
     return base.joinpath(*parts)
 
 
+def _macos_show_fda_dialog(parent=None) -> None:
+    """Zeigt einmalig pro App-Start einen Dialog für Full Disk Access (macOS).
+
+    Nutzt QSettings um zu vermerken, ob der Dialog in dieser Sitzung bereits
+    angezeigt wurde — verhindert wiederholtes Erscheinen beim Navigieren.
+    """
+    s = QSettings(ORG_NAME, "Permissions")
+    if s.value("fda_hint_shown", False, type=bool):
+        return
+    s.setValue("fda_hint_shown", True)
+
+    dlg = QMessageBox(parent)
+    dlg.setWindowTitle("Zugriff eingeschränkt")
+    dlg.setIcon(QMessageBox.Icon.Warning)
+    dlg.setText(
+        "<b>Fily hat keinen Zugriff auf diesen Ordner.</b><br><br>"
+        "macOS schränkt den Zugriff auf bestimmte Verzeichnisse ein "
+        "(z. B. Desktop, Dokumente, Downloads, externe Laufwerke).<br><br>"
+        "Erlaube den Vollzugriff auf Dateien unter:<br>"
+        "<i>Systemeinstellungen → Datenschutz &amp; Sicherheit → "
+        "Vollzugriff auf Dateien</i>"
+    )
+    btn_settings = dlg.addButton("Zu Einstellungen", QMessageBox.ButtonRole.ActionRole)
+    dlg.addButton("Schließen", QMessageBox.ButtonRole.RejectRole)
+    dlg.exec()
+    if dlg.clickedButton() == btn_settings:
+        subprocess.run([
+            "open",
+            "x-apple.systempreferences:"
+            "com.apple.preference.security?Privacy_AllFiles",
+        ])
+
+
 def main():
-    # Ubuntu: disable global AppMenu integration — prevents menu bar from
-    # disappearing immediately after click (BAMF/Unity proxy hijacks Qt menus).
+    # Linux: Umgebung vor QApplication vorbereiten.
+    _linux_dark = False
     if sys.platform.startswith("linux"):
+        # Ubuntu: disable global AppMenu integration — prevents menu bar from
+        # disappearing immediately after click (BAMF/Unity proxy hijacks Qt menus).
         os.environ["UBUNTU_MENUPROXY"] = "0"
+
+        # Dark-Mode-Erkennung VOR QApplication, damit QT_STYLE_OVERRIDE greift
+        # bevor Qt das Plattform-Theme lädt (Fedora/GNOME überschreibt sonst
+        # eine nachträglich gesetzte Palette).
+        _linux_dark = _linux_is_dark()
+        if _linux_dark:
+            # Plattform-Theme entfernen — GNOME/GTK-Theme würde unsere
+            # Fusion-Palette nach dem Start wieder überschreiben.
+            os.environ.pop("QT_QPA_PLATFORMTHEME", None)
+            os.environ["QT_STYLE_OVERRIDE"] = "Fusion"
 
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(ORG_NAME)
+
+    # FDA-Hinweis-Flag zurücksetzen, damit er pro Sitzung einmal erscheinen kann.
+    if sys.platform == "darwin":
+        QSettings(ORG_NAME, "Permissions").setValue("fda_hint_shown", False)
 
     # App-Icon setzen (Taskleiste / Dock / Alt+Tab)
     if sys.platform == "win32":
@@ -1866,9 +1950,12 @@ def main():
         icon_path = _asset_path("assets", "icons", "linux", "256x256.png")
         if icon_path.exists():
             app.setWindowIcon(QIcon(str(icon_path)))
+        # GNOME verknüpft die laufende App mit dem .desktop-Eintrag über
+        # diesen Namen — ohne dies zeigt die Taskleiste das Zahnrad-Icon.
+        app.setDesktopFileName("fily")
 
-    # Linux: detect GNOME dark mode and apply Fusion dark palette if needed.
-    if sys.platform.startswith("linux") and _linux_is_dark():
+    # Linux: Fusion dark palette anwenden (Erkennung bereits oben erfolgt).
+    if _linux_dark:
         _apply_dark_palette(app)
 
     if sys.platform == "darwin":

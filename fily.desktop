@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Fily
+Comment=Fast, clean file explorer
+Exec=/usr/local/bin/Fily/Fily
+Icon=fily
+Type=Application
+Categories=Utility;FileManager;
+StartupWMClass=fily
+StartupNotify=true

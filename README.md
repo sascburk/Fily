@@ -88,14 +88,14 @@ codesign --deep --force --verify --verbose \
 
 ### Linux — Executable
 
-**Requirements:** `python3-dev`, `libxcb-*` packages
+**Requirements:** `python3-dev`
 
 ```bash
-# Fedora (empfohlen — aktiviert Dark Mode Unterstützung)
-sudo dnf install python3-devel python3-virtualenv adwaita-qt6
+# Fedora
+sudo dnf install python3-devel python3-virtualenv
 
 # Ubuntu / Debian
-sudo apt install python3-dev python3-venv libxcb-xinerama0 adwaita-qt6
+sudo apt install python3-dev python3-venv libxcb-xinerama0
 
 # Setup
 python3 -m venv .venv
@@ -111,38 +111,37 @@ pyinstaller fily_app.spec
 
 → Result: `dist/Fily/` folder with binary
 
-**Optional: System-Installation + GNOME-Menüeintrag**
+> **Dark Mode** (Fedora/Ubuntu GNOME) works automatically — no extra packages needed.
 
-> `_internal/` muss neben der Binary liegen — nur so funktioniert Dark Mode unter Fedora/GNOME korrekt.
+**System-Installation + GNOME-Menüeintrag**
+
+> `_internal/` muss neben der Binary liegen — Qt-Bibliotheken und Assets (Icons) sind dort enthalten.
 
 ```bash
 # Verzeichnis anlegen und Dateien kopieren
 sudo mkdir -p /usr/local/bin/Fily
 sudo cp dist/Fily/Fily /usr/local/bin/Fily/Fily
 sudo cp -r dist/Fily/_internal /usr/local/bin/Fily/
+
+# Icon für GNOME
 sudo cp assets/icons/linux/256x256.png /usr/share/pixmaps/fily.png
 
 # Symlink für Kommandozeilen-Aufruf
-sudo ln -s /usr/local/bin/Fily/Fily /usr/local/bin/fily
+sudo ln -sf /usr/local/bin/Fily/Fily /usr/local/bin/fily
 
-# Desktop-Eintrag (GNOME Application Menu)
-# Hinweis: absoluter Icon-Pfad — zuverlässiger als Icon-Name (kein Cache-Problem auf Ubuntu)
-cat > ~/.local/share/applications/fily.desktop << EOF
-[Desktop Entry]
-Name=Fily
-Exec=/usr/local/bin/Fily/Fily
-Icon=/usr/share/pixmaps/fily.png
-Type=Application
-Categories=Utility;FileManager;
-EOF
+# Desktop-Eintrag (GNOME Application Menu + Taskleisten-Icon)
+sudo cp fily.desktop /usr/share/applications/fily.desktop
+sudo update-desktop-database /usr/share/applications/
 ```
 
 Ergebnis:
 ```
 /usr/local/bin/Fily/
 ├── Fily          ← Binary
-└── _internal/    ← Qt-Libs & Dark-Mode-Support
+└── _internal/    ← Qt-Libs, Icons & Assets
 /usr/local/bin/fily  →  /usr/local/bin/Fily/Fily  (Symlink)
+/usr/share/applications/fily.desktop  ← GNOME-Menü & Taskleisten-Icon
+/usr/share/pixmaps/fily.png           ← Icon
 ```
 
 ---
