@@ -462,8 +462,9 @@ class FavoritesPanel(QWidget):
             self._add_dialog()
 
     def _add_dialog(self):
+        opts = QFileDialog.Option.DontUseNativeDialog if sys.platform.startswith("linux") else QFileDialog.Option(0)
         path = QFileDialog.getExistingDirectory(
-            self, "Ordner zu Favoriten hinzufügen", str(Path.home())
+            self, "Ordner zu Favoriten hinzufügen", str(Path.home()), opts
         )
         if path:
             self.model.add(Path(path).name or path, path)
