@@ -2,9 +2,9 @@
 # PyInstaller-Spec-Datei für Fily
 # Erstellt mit:  pyinstaller fily_app.spec
 #
-# macOS  → Fily.app  (Bundle, mehrere Dateien)
-# Windows → Fily.exe  (One-File)
-# Linux   → Fily       (One-File)
+# macOS   → Fily.app       (Bundle / COLLECT)
+# Windows → dist/Fily/     (Folder-Mode)
+# Linux   → dist/Fily/     (Folder-Mode)
 
 import sys
 import shutil
@@ -42,7 +42,7 @@ a = Analysis(
         'PySide6.QtWidgets',
         'PySide6.QtNetwork',
     ],
-    hookspath=[],
+    hookspath=['hooks'],
     hooksconfig={},
     runtime_hooks=[],
     excludes=['gi', 'gtk', 'glib', 'gobject'],
