@@ -119,15 +119,15 @@ pyinstaller fily_app.spec
 
 ```bash
 # Verzeichnis anlegen und Dateien kopieren
-sudo mkdir -p /usr/local/bin/Fily
-sudo cp dist/Fily/Fily /usr/local/bin/Fily/Fily
-sudo cp -r dist/Fily/_internal /usr/local/bin/Fily/
+sudo mkdir -p /opt/Fily
+sudo cp dist/Fily/Fily /opt/Fily/Fily
+sudo cp -r dist/Fily/_internal /opt/Fily/
 
 # Icon für GNOME
 sudo cp assets/icons/linux/256x256.png /usr/share/pixmaps/fily.png
 
 # Symlink für Kommandozeilen-Aufruf
-sudo ln -sf /usr/local/bin/Fily/Fily /usr/local/bin/fily
+sudo ln -sf /opt/Fily/Fily /usr/local/bin/fily
 
 # Desktop-Eintrag (GNOME Application Menu + Taskleisten-Icon)
 sudo cp fily.desktop /usr/share/applications/fily.desktop
@@ -136,10 +136,10 @@ sudo update-desktop-database /usr/share/applications/
 
 Ergebnis:
 ```
-/usr/local/bin/Fily/
+/opt/Fily/
 ├── Fily          ← Binary
 └── _internal/    ← Qt-Libs, Icons & Assets
-/usr/local/bin/fily  →  /usr/local/bin/Fily/Fily  (Symlink)
+/usr/local/bin/fily  →  /opt/Fily/Fily  (Symlink)
 /usr/share/applications/fily.desktop  ← GNOME-Menü & Taskleisten-Icon
 /usr/share/pixmaps/fily.png           ← Icon
 ```
