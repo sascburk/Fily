@@ -332,6 +332,16 @@ class MainWindow(QMainWindow):
         s = QSettings(ORG_NAME, "MainWindow")
         s.setValue(SK_PREVIEW_VISIBLE, visible)
 
+    def _set_view(self, mode: str):
+        """Wechselt den aktiven Browser zur angegeben Ansicht (Liste/Icon)."""
+        cur = self.current_browser
+        if cur is None:
+            return
+        if mode == "icon" and cur._view_stack.currentIndex() == 0:
+            cur._toggle_view_mode()
+        elif mode == "list" and cur._view_stack.currentIndex() == 1:
+            cur._toggle_view_mode()
+
     def _on_selection_changed(self, path: str):
         """Aktualisiert die Vorschau wenn sich die Auswahl ändert."""
         if self.preview.isVisible():
@@ -371,8 +381,15 @@ class MainWindow(QMainWindow):
         self._a(m, "Rückgängig",           "Ctrl+Z",  lambda: self.current_browser and self.current_browser._undo())
 
         # ── Ansicht ───────────────────────────────────────────────────────────
-        m = mb.addMenu("Ansicht")
-        self._a(m, "Aktualisieren", "F5", lambda: self.current_browser and self.current_browser.refresh())
+        m_view = mb.addMenu("Ansicht")
+        self._a(m_view, "Aktualisieren",    "F5",            lambda: self.current_browser and self.current_browser.refresh())
+        self._a(m_view, "Liste",            "Ctrl+Shift+L",  lambda: self._set_view("list"))
+        self._a(m_view, "Icon-Raster",      "Ctrl+Shift+I",  lambda: self._set_view("icon"))
+        m_view.addSeparator()
+        self._a(m_view, "Split-Pane",       "F8",            self._toggle_split)
+        self._a(m_view, "Vorschau",         "F9",            self._toggle_preview)
+        m_view.addSeparator()
+        self._a(m_view, "Versteckte Dateien", callback=lambda: self.current_browser and self.current_browser._toggle_hidden())
 
         # ── Hilfe ─────────────────────────────────────────────────────────────
         m = mb.addMenu("Hilfe")
