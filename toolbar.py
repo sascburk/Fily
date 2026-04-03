@@ -8,18 +8,6 @@ from PySide6.QtWidgets import QWidget, QHBoxLayout, QToolButton, QSizePolicy, QA
 from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QIcon
 
-from config import asset_path
-
-
-def _icon(name: str, fallback_std=None) -> QIcon:
-    """Lädt ein SVG-Icon aus assets/icons/ oder fällt auf Qt-Standard-Icon zurück."""
-    p = asset_path("assets", "icons", f"{name}.svg")
-    if p.exists():
-        return QIcon(str(p))
-    if fallback_std is not None:
-        return QApplication.style().standardIcon(fallback_std)
-    return QIcon()
-
 
 class BrowserToolbar(QWidget):
     """Kompakte Toolbar für den FileBrowser.
