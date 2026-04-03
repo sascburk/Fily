@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QToolButton,
     QFrame, QMenu, QMessageBox, QInputDialog, QAbstractItemView,
     QHeaderView, QFileDialog, QSizePolicy, QProgressDialog, QDialog,
-    QApplication,
+    QApplication, QListView, QStackedWidget,
 )
 from PySide6.QtCore import (
     Qt, QModelIndex, Signal, QTimer, QSettings, QUrl, QDir, QFileInfo, QSize,
@@ -21,7 +21,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QDesktopServices, QPalette, QKeySequence, QShortcut
 
-from config import ORG_NAME, SK_SHOW_HIDDEN, SK_COL_WIDTHS, SK_COL_SORT_COL, SK_COL_SORT_ORDER
+from config import ORG_NAME, SK_SHOW_HIDDEN, SK_COL_WIDTHS, SK_COL_SORT_COL, SK_COL_SORT_ORDER, SK_VIEW_MODE
 from models import ExplorerModel
 from workers import UndoStack, CopyWorker
 from treeview import ExplorerTreeView
@@ -62,6 +62,9 @@ class FileBrowser(QWidget):
         self._select_first_on_load: bool = False
 
         self._build_ui()
+        s = QSettings(ORG_NAME, "FileBrowser")
+        if s.value(SK_VIEW_MODE, "list") == "icon":
+            self._toggle_view_mode()
         self._search_worker: SearchWorker | None = None
         self._search_results: list[str] = []
         self._in_search_mode: bool = False
@@ -156,7 +159,29 @@ class FileBrowser(QWidget):
         hdr.sectionResized.connect(lambda col, old, new: self.save_column_state())
         hdr.sortIndicatorChanged.connect(lambda col, order: self.save_column_state())
 
-        root.addWidget(self.tree, 1)
+        # Stack: Index 0 = Listenmodus, Index 1 = Icon-Modus
+        self._view_stack = QStackedWidget()
+
+        # Seite 0: bestehende Baumansicht
+        self._view_stack.addWidget(self.tree)
+
+        # Seite 1: Icon-Raster
+        self.icon_view = QListView()
+        self.icon_view.setViewMode(QListView.ViewMode.IconMode)
+        self.icon_view.setResizeMode(QListView.ResizeMode.Adjust)
+        self.icon_view.setIconSize(QSize(64, 64))
+        self.icon_view.setGridSize(QSize(90, 90))
+        self.icon_view.setSpacing(4)
+        self.icon_view.setUniformItemSizes(True)
+        self.icon_view.setModel(self.model)
+        self.icon_view.setRootIndex(self.model.index(str(Path.home())))
+        self.icon_view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.icon_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.icon_view.customContextMenuRequested.connect(self._ctx_menu)
+        self.icon_view.doubleClicked.connect(self._dbl_click)
+        self._view_stack.addWidget(self.icon_view)
+
+        root.addWidget(self._view_stack, 1)
 
         self.status = QLabel()
         self.status.setFixedHeight(20)
@@ -224,6 +249,7 @@ class FileBrowser(QWidget):
         idx = self.model.index(path)
         if idx.isValid():
             self.tree.setRootIndex(idx)
+            self.icon_view.setRootIndex(idx)
         if self._pending_select:
             sel = self.model.index(self._pending_select)
             if sel.isValid():
@@ -270,16 +296,32 @@ class FileBrowser(QWidget):
         self.btn_forward.setEnabled(self._hist_pos < len(self._history) - 1)
 
     def _update_status(self):
+        """Aktualisiert Statuszeile: Auswahl, Gesamtanzahl, Speicherplatz."""
         sel = self.tree.selectionModel().selectedRows()
         try:
             total = len(os.listdir(self._cur))
         except PermissionError:
             self.status.setText("Zugriff verweigert")
             return
+
         if sel:
-            self.status.setText(f"{len(sel)} Element(e) ausgewählt  ·  {total} insgesamt")
+            sel_text = f"{len(sel)} ausgewählt  ·  {total} Elemente"
         else:
-            self.status.setText(f"{total} Elemente")
+            sel_text = f"{total} Elemente"
+
+        # Speicherplatz des aktuellen Laufwerks
+        try:
+            usage = shutil.disk_usage(self._cur)
+            free_gb  = usage.free  / (1024 ** 3)
+            total_gb = usage.total / (1024 ** 3)
+            disk_text = f"💾 {free_gb:.1f} GB frei von {total_gb:.1f} GB"
+        except Exception:
+            disk_text = ""
+
+        if disk_text:
+            self.status.setText(f"{sel_text}  ·  {disk_text}")
+        else:
+            self.status.setText(sel_text)
 
     def save_column_state(self):
         """Speichert Spaltenbreiten und Sortierung global in QSettings.
@@ -720,5 +762,17 @@ class FileBrowser(QWidget):
         QMessageBox.information(self, "Eigenschaften", "\n".join(lines))
 
     def _toggle_view_mode(self):
-        """Wechselt zwischen Listen- und Icon-Raster-Ansicht (implementiert in Task 20)."""
-        pass
+        """Wechselt zwischen Listen- und Icon-Raster-Ansicht."""
+        if self._view_stack.currentIndex() == 0:
+            # Wechsel zu Icon-Modus
+            self._view_stack.setCurrentIndex(1)
+            self.icon_view.setRootIndex(self.tree.rootIndex())
+            mode = "icon"
+        else:
+            # Wechsel zu Listen-Modus
+            self._view_stack.setCurrentIndex(0)
+            mode = "list"
+
+        # Persistieren
+        s = QSettings(ORG_NAME, "FileBrowser")
+        s.setValue(SK_VIEW_MODE, mode)
