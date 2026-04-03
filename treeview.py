@@ -56,17 +56,30 @@ class ExplorerTreeView(QTreeView):
                 row = (self.currentIndex().row() + step) % count if has_sel else 0
                 self._select(self.model().index(row, 0, root))
             e.accept()
-        elif e.key() == Qt.Key.Key_Down and not has_sel:
-            first = self.model().index(0, 0, self.rootIndex())
-            if first.isValid():
-                self._select(first)
-            e.accept()
-        elif e.key() == Qt.Key.Key_Up and not has_sel:
+        elif e.key() == Qt.Key.Key_Down:
             root  = self.rootIndex()
             count = self.model().rowCount(root)
-            if count:
+            if not has_sel:
+                if count:
+                    self._select(self.model().index(0, 0, root))
+                e.accept()
+            elif count and self.currentIndex().row() >= count - 1:
+                self._select(self.model().index(0, 0, root))
+                e.accept()
+            else:
+                super().keyPressEvent(e)
+        elif e.key() == Qt.Key.Key_Up:
+            root  = self.rootIndex()
+            count = self.model().rowCount(root)
+            if not has_sel:
+                if count:
+                    self._select(self.model().index(count - 1, 0, root))
+                e.accept()
+            elif count and self.currentIndex().row() <= 0:
                 self._select(self.model().index(count - 1, 0, root))
-            e.accept()
+                e.accept()
+            else:
+                super().keyPressEvent(e)
         else:
             super().keyPressEvent(e)
 

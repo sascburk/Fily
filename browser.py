@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import (
     Qt, QModelIndex, Signal, QTimer, QSettings, QUrl, QDir, QFileInfo, QSize,
-    QItemSelectionModel, QMimeData,
+    QItemSelectionModel, QMimeData, QEvent,
 )
 from PySide6.QtGui import QDesktopServices, QPalette, QKeySequence, QShortcut
 
@@ -179,6 +179,7 @@ class FileBrowser(QWidget):
         self.icon_view.customContextMenuRequested.connect(self._ctx_menu)
         self.icon_view.doubleClicked.connect(self._dbl_click)
         self.icon_view.selectionModel().selectionChanged.connect(self._sel_changed)
+        self.icon_view.installEventFilter(self)
         self._view_stack.addWidget(self.icon_view)
 
         root.addWidget(self._view_stack, 1)
@@ -192,6 +193,33 @@ class FileBrowser(QWidget):
         self.status.setForegroundRole(QPalette.ColorRole.PlaceholderText)
         self.status.setContentsMargins(8, 0, 8, 0)
         root.addWidget(self.status)
+
+    # ── Event-Filter (Icon-Raster: Pfeil-Wrap-Around) ─────────────────────────
+    def eventFilter(self, obj, event):
+        if obj is self.icon_view and event.type() == QEvent.Type.KeyPress:
+            root  = self.icon_view.rootIndex()
+            count = self.model.rowCount(root)
+            cur   = self.icon_view.currentIndex().row()
+            key   = event.key()
+            if key == Qt.Key.Key_Down and count and cur >= count - 1:
+                first = self.model.index(0, 0, root)
+                self.icon_view.setCurrentIndex(first)
+                self.icon_view.selectionModel().select(
+                    first,
+                    QItemSelectionModel.SelectionFlag.ClearAndSelect
+                    | QItemSelectionModel.SelectionFlag.Rows,
+                )
+                return True
+            if key == Qt.Key.Key_Up and count and cur <= 0:
+                last = self.model.index(count - 1, 0, root)
+                self.icon_view.setCurrentIndex(last)
+                self.icon_view.selectionModel().select(
+                    last,
+                    QItemSelectionModel.SelectionFlag.ClearAndSelect
+                    | QItemSelectionModel.SelectionFlag.Rows,
+                )
+                return True
+        return super().eventFilter(obj, event)
 
     # ── Tastaturkürzel ────────────────────────────────────────────────────────
     def _install_shortcuts(self):

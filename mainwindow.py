@@ -161,6 +161,10 @@ class MainWindow(QMainWindow):
         tear_bar.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         tear_bar.setExpanding(False)   # Tabs linksbündig, nicht gestreckt
         tear_bar.tab_detached.connect(self._detach_tab)
+        tear_bar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        tear_bar.customContextMenuRequested.connect(
+            lambda pos, _tw=tw: self._tab_bar_ctx_menu(pos, _tw)
+        )
         tw.setTabBar(tear_bar)
         tw.setTabsClosable(False)  # Eigene Buttons via _add_close_btn
         tw.setMovable(True)
@@ -248,6 +252,41 @@ class MainWindow(QMainWindow):
             self.tabs_right.setVisible(False)
         elif tw is self.tabs and self.tabs_right.isVisible():
             # Letzter Tab im linken Pane während Split aktiv → Split beenden
+            self.tabs_right.setVisible(False)
+
+    def _tab_bar_ctx_menu(self, pos, tw: QTabWidget):
+        """Kontextmenü auf der Tab-Leiste — nur im Split-Modus."""
+        if not self.tabs_right.isVisible():
+            return
+        idx = tw.tabBar().tabAt(pos)
+        if idx < 0:
+            return
+        target_is_right = tw is self.tabs
+        direction = "rechte" if target_is_right else "linke"
+        menu = QMenu(self)
+        move_action = menu.addAction(f"In {direction} Pane verschieben")
+        # Letzten Tab der linken Pane nicht verschieben (linke Pane darf nicht leer werden)
+        if tw is self.tabs and tw.count() <= 1:
+            move_action.setEnabled(False)
+        if menu.exec(tw.tabBar().mapToGlobal(pos)) == move_action:
+            self._move_tab_to_other_pane(tw, idx)
+
+    def _move_tab_to_other_pane(self, source: QTabWidget, idx: int):
+        """Verschiebt einen Tab von einer Pane in die andere."""
+        target = self.tabs_right if source is self.tabs else self.tabs
+        browser = source.widget(idx)
+        if not isinstance(browser, FileBrowser):
+            return
+        try:
+            browser.path_changed.disconnect(self._path_changed)
+            browser.request_add_fav.disconnect(self.fav_panel.add_current)
+            browser.selection_changed.disconnect(self._on_selection_changed)
+        except RuntimeError:
+            pass
+        source.removeTab(idx)
+        self._add_existing_tab(browser, target)
+        # Rechte Pane ist jetzt leer → Split-Modus beenden
+        if source is self.tabs_right and source.count() == 0:
             self.tabs_right.setVisible(False)
 
     def _current_browser_in(self, tw: QTabWidget) -> "FileBrowser | None":

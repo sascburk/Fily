@@ -154,6 +154,22 @@ class FavoritesPanel(QWidget):
                 if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                     self._clicked(self.view.currentIndex())
                     return True
+                count = self.model.rowCount()
+                cur   = self.view.currentIndex().row()
+                if event.key() == Qt.Key.Key_Down and count and cur >= count - 1:
+                    target = self.model.index(0)
+                    self.view.setCurrentIndex(target)
+                    self.view.selectionModel().select(
+                        target, QItemSelectionModel.SelectionFlag.ClearAndSelect
+                    )
+                    return True
+                if event.key() == Qt.Key.Key_Up and count and cur <= 0:
+                    target = self.model.index(count - 1)
+                    self.view.setCurrentIndex(target)
+                    self.view.selectionModel().select(
+                        target, QItemSelectionModel.SelectionFlag.ClearAndSelect
+                    )
+                    return True
             elif event.type() == QEvent.Type.FocusIn:
                 if not self.view.selectionModel().hasSelection():
                     first = self.model.index(0)
