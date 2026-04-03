@@ -705,6 +705,21 @@ class FileBrowser(QWidget):
                          "win32":  "Im Explorer anzeigen"}.get(sys.platform, "Im Dateimanager anzeigen")
                 a_finder = menu.addAction(label)
                 a_finder.triggered.connect(lambda: reveal_in_filemanager(paths[0]))
+            # „Öffnen mit…" Untermenü (nur für Einzelauswahl von Dateien)
+            if len(paths) == 1 and not os.path.isdir(paths[0]):
+                from openwith import get_apps_for_file, open_with
+                submenu = menu.addMenu("Öffnen mit …")
+                apps = get_apps_for_file(paths[0])
+                if apps:
+                    for app_name, app_cmd in apps:
+                        action = submenu.addAction(app_name)
+                        snap_cmd = app_cmd   # Closure-Snapshot
+                        snap_path = paths[0]
+                        action.triggered.connect(
+                            lambda _, p=snap_path, c=snap_cmd: open_with(p, c)
+                        )
+                else:
+                    submenu.addAction("Keine kompatiblen Apps gefunden").setEnabled(False)
             menu.addSeparator()
             a_cut = menu.addAction("Ausschneiden\tCtrl+X")
             a_cut.triggered.connect(self._cut)
@@ -744,6 +759,19 @@ class FileBrowser(QWidget):
             menu.addSeparator()
             a_fav = menu.addAction("Aktuellen Ordner zu Favoriten")
             a_fav.triggered.connect(lambda: self.request_add_fav.emit(self._cur))
+
+        # Archiv-Aktionen
+        if index.isValid() and paths:
+            menu.addSeparator()
+            a_zip = menu.addAction("Als ZIP komprimieren …")
+            a_zip.triggered.connect(self._compress_selection)
+
+            # „Hier entpacken" nur für unterstützte Archiv-Dateien
+            if len(paths) == 1:
+                suffix = "".join(Path(paths[0]).suffixes).lower()
+                if suffix in (".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tar.xz"):
+                    a_extract = menu.addAction("Hier entpacken")
+                    a_extract.triggered.connect(lambda: self._extract_archive(paths[0]))
 
         menu.exec(active_view.viewport().mapToGlobal(pos))
 
@@ -791,3 +819,55 @@ class FileBrowser(QWidget):
         # Persistieren
         s = QSettings(ORG_NAME, "FileBrowser")
         s.setValue(SK_VIEW_MODE, mode)
+
+    def _compress_selection(self):
+        """Komprimiert die Auswahl als ZIP im aktuellen Ordner."""
+        from fileops import compress_to_zip
+        from PySide6.QtWidgets import QProgressDialog
+        paths = self._sel_paths()
+        if not paths:
+            return
+
+        # Standard-Name: erster Dateiname + .zip
+        default_name = Path(paths[0]).stem + ".zip"
+        dest = str(Path(self._cur) / default_name)
+        # Konflikt-Auflösung: (1), (2) etc. anhängen
+        i = 1
+        while Path(dest).exists():
+            dest = str(Path(self._cur) / f"{Path(paths[0]).stem} ({i}).zip")
+            i += 1
+
+        dlg = QProgressDialog(f"Komprimiere {len(paths)} Element(e) …", "Abbrechen", 0, 100, self)
+        dlg.setWindowModality(Qt.WindowModality.WindowModal)
+        dlg.setMinimumDuration(400)
+
+        from PySide6.QtCore import QThread, Signal as _Signal
+
+        class _ZipThread(QThread):
+            done = _Signal(bool)
+            def __init__(self, srcs, dst):
+                super().__init__()
+                self._srcs, self._dst = srcs, dst
+            def run(self):
+                from fileops import compress_to_zip
+                ok = compress_to_zip(self._srcs, self._dst)
+                self.done.emit(ok)
+
+        self._zip_thread = _ZipThread(paths, dest)
+        self._zip_thread.done.connect(lambda ok: (
+            dlg.close(),
+            self.refresh(),
+            QMessageBox.warning(self, "Fehler", "Komprimierung fehlgeschlagen.") if not ok else None,
+        ))
+        dlg.canceled.connect(self._zip_thread.requestInterruption)
+        self._zip_thread.start()
+
+    def _extract_archive(self, path: str):
+        """Entpackt ein Archiv in den aktuellen Ordner."""
+        from fileops import extract_archive
+        ok = extract_archive(path, self._cur)
+        if ok:
+            self.refresh()
+        else:
+            QMessageBox.warning(self, "Fehler",
+                                f"Entpacken fehlgeschlagen oder Format nicht unterstützt:\n{path}")
