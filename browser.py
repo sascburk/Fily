@@ -198,16 +198,25 @@ class FileBrowser(QWidget):
         # Nur Shortcuts die NICHT im Menü und NICHT im Fenster definiert sind.
         # Ctrl+F, Ctrl+L, F4 sind in MainWindow._install_window_shortcuts (WindowShortcut),
         # damit sie auch aus der Favoritenleiste heraus funktionieren.
-        pairs = [
-            (Qt.Key.Key_Backspace,  self.go_up),      # Alt+Up ist im Menü
-            (Qt.Key.Key_Return,     self._open_sel),
-            (Qt.Key.Key_Enter,      self._open_sel),
-            (Qt.Key.Key_Escape,     self._escape),
+
+        # Return/Enter/Backspace: nur auf den Dateilisten-Widgets (WidgetShortcut),
+        # damit QLineEdit-Felder (Adressleiste, Suche) den Tastendruck selbst verarbeiten
+        # können und returnPressed ungestört emittiert wird.
+        view_pairs = [
+            (Qt.Key.Key_Backspace, self.go_up),
+            (Qt.Key.Key_Return,    self._open_sel),
+            (Qt.Key.Key_Enter,     self._open_sel),
         ]
-        for combo, slot in pairs:
-            sc = QShortcut(QKeySequence(combo), self)
-            sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
-            sc.activated.connect(slot)
+        for view in (self.tree, self.icon_view):
+            for combo, slot in view_pairs:
+                sc = QShortcut(QKeySequence(combo), view)
+                sc.setContext(Qt.ShortcutContext.WidgetShortcut)
+                sc.activated.connect(slot)
+
+        # Escape: breit verfügbar (wird in _escape selbst eingegrenzt)
+        sc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        sc.activated.connect(self._escape)
 
     # ── Navigation ────────────────────────────────────────────────────────────
     def navigate(self, path: str):
@@ -255,12 +264,28 @@ class FileBrowser(QWidget):
             if sel.isValid():
                 self.tree._select(sel)
             self._pending_select = None
-        elif self._select_first_on_load:
+        else:
+            give_focus = self._select_first_on_load
             self._select_first_on_load = False
             first = self.model.index(0, 0, self.tree.rootIndex())
             if first.isValid():
                 self.tree._select(first)
-            self.tree.setFocus()
+                if give_focus:
+                    self.tree.setFocus()
+            else:
+                # Modell noch nicht geladen → auf directoryLoaded warten
+                def _on_dir_loaded(loaded_path, _give_focus=give_focus):
+                    if loaded_path == path:
+                        try:
+                            self.model.directoryLoaded.disconnect(_on_dir_loaded)
+                        except RuntimeError:
+                            pass
+                        f = self.model.index(0, 0, self.tree.rootIndex())
+                        if f.isValid():
+                            self.tree._select(f)
+                            if _give_focus:
+                                self.tree.setFocus()
+                self.model.directoryLoaded.connect(_on_dir_loaded)
 
     def go_back(self):
         if self._hist_pos > 0:

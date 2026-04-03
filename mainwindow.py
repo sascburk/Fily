@@ -242,6 +242,12 @@ class MainWindow(QMainWindow):
         tw = tab_widget or self.tabs
         if tw.count() > 1:
             tw.removeTab(idx)
+        elif tw is self.tabs_right:
+            # Letzter Tab im rechten Pane → Split-Modus beenden
+            self.tabs_right.setVisible(False)
+        elif tw is self.tabs and self.tabs_right.isVisible():
+            # Letzter Tab im linken Pane während Split aktiv → Split beenden
+            self.tabs_right.setVisible(False)
 
     def _current_browser_in(self, tw: QTabWidget) -> "FileBrowser | None":
         """Gibt den aktiven Browser im angegebenen TabWidget zurück."""
