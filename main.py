@@ -44,6 +44,7 @@ from config import (
 )
 from workers import UndoStack, CopyWorker
 from models import FavoritesModel, ExplorerModel
+from treeview import ExplorerTreeView
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -298,96 +299,6 @@ class FavoritesPanel(QWidget):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# ExplorerTreeView — QTreeView mit echtem Drag&Drop in Unterordner
-# ──────────────────────────────────────────────────────────────────────────────
-class ExplorerTreeView(QTreeView):
-    """Erweiterter QTreeView: Dateien per Drag&Drop in Unterordner verschieben/kopieren."""
-
-    files_dropped = Signal(list, str, Qt.DropAction)   # [src_paths], dest_dir, action
-
-    _SEL = QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Rows
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        # Selektionsfarbe bleibt blau — auch wenn der Fokus woanders ist
-        self.setStyleSheet(
-            "QTreeView::item:selected:active  { background: palette(highlight); color: palette(highlighted-text); }"
-            "QTreeView::item:selected:!active { background: palette(mid); color: palette(text); }"
-        )
-
-    def _select(self, idx):
-        """Setzt Cursor UND visuelle Selektion (blau) auf idx."""
-        self.setCurrentIndex(idx)
-        self.selectionModel().select(idx, self._SEL)
-        self.scrollTo(idx)
-
-    def focusInEvent(self, e):
-        should_select = not self.selectionModel().hasSelection()
-        super().focusInEvent(e)
-        if should_select:
-            first = self.model().index(0, 0, self.rootIndex())
-            if first.isValid():
-                self._select(first)
-
-    def keyPressEvent(self, e):
-        has_sel = self.selectionModel().hasSelection()
-        if e.key() in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab):
-            step  = -1 if e.key() == Qt.Key.Key_Backtab else 1
-            root  = self.rootIndex()
-            count = self.model().rowCount(root)
-            if count:
-                row = (self.currentIndex().row() + step) % count if has_sel else 0
-                self._select(self.model().index(row, 0, root))
-            e.accept()
-        elif e.key() == Qt.Key.Key_Down and not has_sel:
-            first = self.model().index(0, 0, self.rootIndex())
-            if first.isValid():
-                self._select(first)
-            e.accept()
-        elif e.key() == Qt.Key.Key_Up and not has_sel:
-            root  = self.rootIndex()
-            count = self.model().rowCount(root)
-            if count:
-                self._select(self.model().index(count - 1, 0, root))
-            e.accept()
-        else:
-            super().keyPressEvent(e)
-
-    def dragEnterEvent(self, e):
-        if e.mimeData().hasUrls():
-            e.acceptProposedAction()
-        else:
-            super().dragEnterEvent(e)
-
-    def dragMoveEvent(self, e):
-        if e.mimeData().hasUrls():
-            idx = self.indexAt(e.position().toPoint())
-            if idx.isValid():
-                path = self.model().filePath(idx)
-                if os.path.isdir(path):
-                    self.setCurrentIndex(idx)
-                    e.acceptProposedAction()
-                    return
-            e.ignore()
-        else:
-            super().dragMoveEvent(e)
-
-    def dropEvent(self, e):
-        if e.mimeData().hasUrls():
-            idx = self.indexAt(e.position().toPoint())
-            if idx.isValid():
-                dest = self.model().filePath(idx)
-                if os.path.isdir(dest):
-                    paths = [u.toLocalFile() for u in e.mimeData().urls()]
-                    self.files_dropped.emit(paths, dest, e.dropAction())
-                    e.acceptProposedAction()
-                    return
-            e.ignore()
-        else:
-            super().dropEvent(e)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
 # Adressleiste
 # ──────────────────────────────────────────────────────────────────────────────
 class AddressBar(QLineEdit):
@@ -506,6 +417,7 @@ class FileBrowser(QWidget):
             self.model.setFilter(self.model.filter() | QDir.Filter.Hidden)
 
         self.tree = ExplorerTreeView()
+        self.tree._current_path = self._cur
         self.tree.setModel(self.model)
         self.tree.setRootIsDecorated(False)
         self.tree.setItemsExpandable(False)
@@ -590,6 +502,7 @@ class FileBrowser(QWidget):
 
     def _apply(self, path: str):
         self._cur = path
+        self.tree._current_path = path
         self.tree.selectionModel().clearSelection()
         self.model.setRootPath(path)
         QTimer.singleShot(30, lambda: self._set_root_index(path))
