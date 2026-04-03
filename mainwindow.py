@@ -14,7 +14,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSettings, Signal, QPoint, QUrl, QEvent
 from PySide6.QtGui import QAction, QKeySequence, QDesktopServices, QShortcut
 
-from config import APP_NAME, ORG_NAME, BUYMEACOFFEE_URL, GITHUB_URL, SK_GEOMETRY, SK_SPLITTER_MAIN, SK_LAST_PATH, SK_PREVIEW_VISIBLE, SK_PREVIEW_WIDTH
+from config import (
+    APP_NAME, ORG_NAME, BUYMEACOFFEE_URL, GITHUB_URL,
+    SK_GEOMETRY, SK_SPLITTER_MAIN, SK_SPLITTER_PANE,
+    SK_LAST_PATH, SK_PREVIEW_VISIBLE, SK_PREVIEW_WIDTH,
+)
 from browser import FileBrowser
 from favorites import FavoritesPanel
 from dialogs import ShortcutsDialog, AboutDialog, _CtrlTabFilter
@@ -68,13 +72,6 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(APP_NAME)
         self.setMinimumSize(700, 440)
 
-        s = QSettings(ORG_NAME, "MainWindow")
-        geo = s.value("geometry")
-        if geo:
-            self.restoreGeometry(geo)
-        else:
-            self.resize(1100, 680)
-
         self._build_ui()
         self._build_menu()
         self._install_window_shortcuts()
@@ -83,115 +80,165 @@ class MainWindow(QMainWindow):
     def _build_ui(self):
         center = QWidget()
         self.setCentralWidget(center)
-        layout = QHBoxLayout(center)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        main_layout = QHBoxLayout(center)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
+        # ── Haupt-Splitter: Favoriten | Browser-Bereich | Vorschau ───────────────
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.setHandleWidth(1)
 
         self.fav_panel = FavoritesPanel()
 
-        # ── Tab-Widget ────────────────────────────────────────────────────────
-        self.tabs = QTabWidget()
-        tear_bar = TearOffTabBar()
-        tear_bar.tab_detached.connect(self._detach_tab)
-        self.tabs.setTabBar(tear_bar)
-        self.tabs.setTabsClosable(True)
-        self.tabs.setMovable(True)
-        self.tabs.setDocumentMode(True)   # macOS-nativer Tab-Stil
-        self.tabs.tabCloseRequested.connect(self._close_tab)
-        self.tabs.currentChanged.connect(self._tab_changed)
+        # ── Browser-Bereich: linke + rechte Tab-Gruppe (Dual-Pane) ───────────────
+        self._browser_container = QWidget()
+        browser_layout = QHBoxLayout(self._browser_container)
+        browser_layout.setContentsMargins(0, 0, 0, 0)
+        browser_layout.setSpacing(0)
 
-        btn_new_tab = QToolButton()
-        btn_new_tab.setText(" + ")
-        btn_new_tab.setToolTip("Neuer Tab  (Ctrl+T)")
-        btn_new_tab.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        btn_new_tab.clicked.connect(self._new_tab)
-        self.tabs.setCornerWidget(btn_new_tab, Qt.Corner.TopRightCorner)
+        # Splitter zwischen linker und rechter Tab-Gruppe
+        self._pane_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._pane_splitter.setHandleWidth(2)
 
-        # Ersten Tab öffnen (ggf. mit übergebenem Browser beim Tear-Off)
-        s = QSettings(ORG_NAME, "MainWindow")
-        if self._initial_browser is not None:
-            self._add_existing_tab(self._initial_browser)
-        else:
-            start_path = s.value("last_path", str(Path.home()))
-            self._add_tab(start_path)
-        self.fav_panel.navigate.connect(self._fav_navigate)
+        # Linke Tab-Gruppe (immer sichtbar)
+        self.tabs = self._make_tab_widget()
+        self._pane_splitter.addWidget(self.tabs)
+
+        # Rechte Tab-Gruppe (nur bei Dual-Pane, F8)
+        self.tabs_right = self._make_tab_widget()
+        self.tabs_right.setVisible(False)
+        self._pane_splitter.addWidget(self.tabs_right)
+
+        browser_layout.addWidget(self._pane_splitter)
+
+        # Vorschau-Drawer (wiederverwendet aus Task 16)
+        self.preview = PreviewDrawer()
 
         self.splitter.addWidget(self.fav_panel)
-        self.splitter.addWidget(self.tabs)
-
-        # Vorschau-Drawer (rechts, per F9 ein-/ausblendbar)
-        self.preview = PreviewDrawer()
+        self.splitter.addWidget(self._browser_container)
         self.splitter.addWidget(self.preview)
         self.splitter.setStretchFactor(0, 0)   # FavoritesPanel: fest
-        self.splitter.setStretchFactor(1, 1)   # Tabs: flexibel
+        self.splitter.setStretchFactor(1, 1)   # Browser-Bereich: flexibel
         self.splitter.setStretchFactor(2, 0)   # Preview: fest
-        self.splitter.setSizes([190, 900, 0])
 
-        # Vorschau-Zustand wiederherstellen
+        # Gespeicherten Zustand wiederherstellen
+        s = QSettings(ORG_NAME, "MainWindow")
+        geo = s.value(SK_GEOMETRY)
+        if geo:
+            self.restoreGeometry(geo)
+        else:
+            self.resize(1200, 700)
+
+        splitter_state = s.value(SK_SPLITTER_MAIN)
+        if splitter_state:
+            self.splitter.restoreState(splitter_state)
+        else:
+            self.splitter.setSizes([190, 900, 0])
+
+        pane_state = s.value(SK_SPLITTER_PANE)
+        if pane_state:
+            self._pane_splitter.restoreState(pane_state)
+
         preview_visible = s.value(SK_PREVIEW_VISIBLE, False, type=bool)
         self.preview.setVisible(preview_visible)
 
-        sp = s.value(SK_SPLITTER_MAIN)
-        if sp:
-            self.splitter.restoreState(sp)
+        # Ersten Tab öffnen
+        if self._initial_browser is not None:
+            self._add_existing_tab(self._initial_browser, self.tabs)
+        else:
+            start_path = s.value(SK_LAST_PATH, str(Path.home()))
+            self._add_tab(start_path, self.tabs)
 
-        layout.addWidget(self.splitter)
+        self.fav_panel.navigate.connect(self._fav_navigate)
 
-    def _add_tab(self, path: str | None = None) -> "FileBrowser":
+        main_layout.addWidget(self.splitter)
+
+    def _make_tab_widget(self) -> QTabWidget:
+        """Erstellt ein konfiguriertes QTabWidget mit TearOffTabBar."""
+        tw = QTabWidget()
+        tear_bar = TearOffTabBar()
+        tear_bar.tab_detached.connect(self._detach_tab)
+        tw.setTabBar(tear_bar)
+        tw.setTabsClosable(True)
+        tw.setMovable(True)
+        tw.setDocumentMode(True)
+        tw.tabCloseRequested.connect(lambda idx, t=tw: self._close_tab(idx, t))
+        tw.currentChanged.connect(lambda idx, t=tw: self._tab_changed(idx, t))
+
+        btn_new = QToolButton()
+        btn_new.setText(" + ")
+        btn_new.setToolTip("Neuer Tab  (Ctrl+T)")
+        btn_new.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        btn_new.clicked.connect(lambda: self._new_tab(tw))
+        tw.setCornerWidget(btn_new, Qt.Corner.TopRightCorner)
+        return tw
+
+    def _add_tab(self, path: str | None = None, tab_widget: QTabWidget | None = None) -> "FileBrowser":
         """Fügt einen neuen Tab hinzu und gibt den Browser zurück."""
+        tw = tab_widget or self.tabs
         browser = FileBrowser(path)
         browser.path_changed.connect(self._path_changed)
-        browser.selection_changed.connect(self._on_selection_changed)
         browser.request_add_fav.connect(self.fav_panel.add_current)
+        browser.selection_changed.connect(self._on_selection_changed)
         name = Path(path).name if path else "Home"
-        idx = self.tabs.addTab(browser, name or "/")
-        self.tabs.setCurrentIndex(idx)
+        idx = tw.addTab(browser, name or "/")
+        tw.setCurrentIndex(idx)
         return browser
 
-    def _add_existing_tab(self, browser: "FileBrowser"):
+    def _add_existing_tab(self, browser: "FileBrowser", tab_widget: QTabWidget | None = None):
         """Nimmt einen bestehenden Browser-Widget auf (z. B. nach Tear-Off)."""
+        tw = tab_widget or self.tabs
         browser.path_changed.connect(self._path_changed)
-        browser.selection_changed.connect(self._on_selection_changed)
         browser.request_add_fav.connect(self.fav_panel.add_current)
+        browser.selection_changed.connect(self._on_selection_changed)
         name = Path(browser.current_path).name or "/"
-        idx = self.tabs.addTab(browser, name)
-        self.tabs.setCurrentIndex(idx)
+        idx = tw.addTab(browser, name)
+        tw.setCurrentIndex(idx)
 
     def _detach_tab(self, idx: int, global_pos):
         """Löst einen Tab aus und öffnet ihn in einem neuen Fenster."""
-        if self.tabs.count() <= 1:
+        # Finde das TabWidget, das diesen Tab enthält
+        sender_bar = self.sender()
+        tw = self.tabs
+        if hasattr(self, 'tabs_right') and sender_bar is self.tabs_right.tabBar():
+            tw = self.tabs_right
+        if tw.count() <= 1:
             return
-        browser = self.tabs.widget(idx)
+        browser = tw.widget(idx)
         if not isinstance(browser, FileBrowser):
             return
-        # Signale vom alten Fenster trennen
         try:
             browser.path_changed.disconnect(self._path_changed)
             browser.request_add_fav.disconnect(self.fav_panel.add_current)
+            browser.selection_changed.disconnect(self._on_selection_changed)
         except RuntimeError:
             pass
-        self.tabs.removeTab(idx)
+        tw.removeTab(idx)
         new_win = MainWindow(_initial_browser=browser)
         new_win.resize(self.size())
         new_win.show()
-        new_win.move(global_pos.x() - new_win.width() // 2,
-                     global_pos.y() - 30)
+        new_win.move(global_pos.x() - new_win.width() // 2, global_pos.y() - 30)
 
-    def _new_tab(self):
-        cur = self.current_browser
-        self._add_tab(cur.current_path if cur else str(Path.home()))
+    def _new_tab(self, tab_widget: QTabWidget | None = None):
+        tw = tab_widget or self.tabs
+        cur = self._current_browser_in(tw)
+        self._add_tab(cur.current_path if cur else str(Path.home()), tw)
 
-    def _close_tab(self, idx: int):
-        if self.tabs.count() > 1:
-            self.tabs.removeTab(idx)
+    def _close_tab(self, idx: int, tab_widget: QTabWidget | None = None):
+        tw = tab_widget or self.tabs
+        if tw.count() > 1:
+            tw.removeTab(idx)
+
+    def _current_browser_in(self, tw: QTabWidget) -> "FileBrowser | None":
+        """Gibt den aktiven Browser im angegebenen TabWidget zurück."""
+        w = tw.currentWidget()
+        return w if isinstance(w, FileBrowser) else None
 
     @property
     def current_browser(self) -> "FileBrowser | None":
-        w = self.tabs.currentWidget()
-        return w if isinstance(w, FileBrowser) else None
+        """Gibt den aktiven Browser zurück — bevorzugt das zuletzt verwendete Pane."""
+        # Linke Pane ist primär
+        return self._current_browser_in(self.tabs)
 
     def focusNextPrevChild(self, next_: bool) -> bool:
         """4-Stop Tab-Reihenfolge: Favoriten → Adresse → Suche → Inhalt → zurück."""
@@ -214,10 +261,26 @@ class MainWindow(QMainWindow):
             cur.navigate(path)
             cur.focus_and_select_first()
 
-    def _tab_changed(self, idx: int):
-        browser = self.tabs.widget(idx)
+    def _tab_changed(self, idx: int, tab_widget: QTabWidget | None = None):
+        tw = tab_widget or self.tabs
+        browser = tw.widget(idx)
         if isinstance(browser, FileBrowser):
             self._path_changed(browser.current_path)
+
+    def _toggle_split(self):
+        """Schaltet Dual-Pane (rechte Tab-Gruppe) ein/aus (F8)."""
+        visible = not self.tabs_right.isVisible()
+        self.tabs_right.setVisible(visible)
+        if visible:
+            if self.tabs_right.count() == 0:
+                # Rechte Pane mit aktuellem Ordner initialisieren
+                cur = self.current_browser
+                self._add_tab(cur.current_path if cur else str(Path.home()), self.tabs_right)
+            # Splitter gleichmäßig aufteilen
+            total = self._pane_splitter.width()
+            self._pane_splitter.setSizes([total // 2, total // 2])
+        s = QSettings(ORG_NAME, "MainWindow")
+        s.setValue(SK_SPLITTER_PANE, self._pane_splitter.saveState())
 
     # ── Fensterkürzel (Tab-Navigation) ────────────────────────────────────────
     def _install_window_shortcuts(self):
@@ -230,6 +293,7 @@ class MainWindow(QMainWindow):
              lambda: self.current_browser and self.current_browser._focus_addr()),
             (Qt.Key.Key_F4,
              lambda: self.current_browser and self.current_browser._focus_addr()),
+            (Qt.Key.Key_F8,    self._toggle_split),
             (Qt.Key.Key_F9,    self._toggle_preview),
             (Qt.Key.Key_Space, self._toggle_preview),
         ]
@@ -352,9 +416,10 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         s = QSettings(ORG_NAME, "MainWindow")
-        s.setValue("geometry",      self.saveGeometry())
+        s.setValue(SK_GEOMETRY,      self.saveGeometry())
         s.setValue(SK_SPLITTER_MAIN, self.splitter.saveState())
+        s.setValue(SK_SPLITTER_PANE, self._pane_splitter.saveState())
         cur = self.current_browser
         if cur:
-            s.setValue("last_path", cur.current_path)
+            s.setValue(SK_LAST_PATH, cur.current_path)
         super().closeEvent(event)
