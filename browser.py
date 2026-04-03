@@ -585,7 +585,8 @@ class FileBrowser(QWidget):
         reply = QMessageBox.question(
             self, "In Papierkorb legen",
             f"{len(paths)} Element(e) in den Papierkorb legen?\n\n{text}",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
         )
         if reply != QMessageBox.StandardButton.Yes:
             return

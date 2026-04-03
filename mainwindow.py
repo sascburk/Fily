@@ -444,7 +444,7 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         self._a(m, "Umbenennen",           "F2",      lambda: self.current_browser and self.current_browser._rename())
         self._a(m, "Mehrfach umbenennen",  "",        lambda: self.current_browser and self.current_browser._batch_rename())
-        trash_sc = "Meta+Backspace" if sys.platform == "darwin" else "Delete"
+        trash_sc = "Ctrl+Backspace" if sys.platform == "darwin" else "Delete"
         self._a(m, "In Papierkorb", trash_sc, lambda: self.current_browser and self.current_browser._delete())
         m.addSeparator()
         self._a(m, "Rückgängig",           "Ctrl+Z",  lambda: self.current_browser and self.current_browser._undo())
