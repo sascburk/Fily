@@ -21,7 +21,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QDesktopServices, QPalette, QKeySequence, QShortcut
 
-from config import ORG_NAME, SK_SHOW_HIDDEN
+from config import ORG_NAME, SK_SHOW_HIDDEN, SK_COL_WIDTHS, SK_COL_SORT_COL, SK_COL_SORT_ORDER
 from models import ExplorerModel
 from workers import UndoStack, CopyWorker
 from treeview import ExplorerTreeView
@@ -158,10 +158,16 @@ class FileBrowser(QWidget):
         hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        # Standardbreiten setzen, dann gespeicherte Einstellungen wiederherstellen
         hdr.resizeSection(0, 280)
         hdr.resizeSection(1, 145)
         hdr.resizeSection(2, 80)
         hdr.resizeSection(3, 100)
+        self.restore_column_state()
+
+        # Spaltenbreite und Sortierung bei Änderung persistieren
+        hdr.sectionResized.connect(lambda col, old, new: self.save_column_state())
+        hdr.sortIndicatorChanged.connect(lambda col, order: self.save_column_state())
 
         root.addWidget(self.tree, 1)
 
@@ -287,6 +293,45 @@ class FileBrowser(QWidget):
             self.status.setText(f"{len(sel)} Element(e) ausgewählt  ·  {total} insgesamt")
         else:
             self.status.setText(f"{total} Elemente")
+
+    def save_column_state(self):
+        """Speichert Spaltenbreiten und Sortierung global in QSettings.
+
+        Global = eine einzige Einstellung für alle Ordner und alle Tabs.
+        Wird beim Ändern der Spaltenbreite/Sortierung aufgerufen.
+        """
+        import json
+        hdr = self.tree.header()
+        widths = [hdr.sectionSize(c) for c in range(4)]
+        s = QSettings(ORG_NAME, "FileBrowser")
+        s.setValue(SK_COL_WIDTHS, json.dumps(widths))
+        s.setValue(SK_COL_SORT_COL, hdr.sortIndicatorSection())
+        s.setValue(SK_COL_SORT_ORDER, int(hdr.sortIndicatorOrder()))
+
+    def restore_column_state(self):
+        """Stellt Spaltenbreiten und Sortierung aus QSettings wieder her.
+
+        Wird einmalig beim Initialisieren aufgerufen, bevor der erste Ordner geladen wird.
+        Wenn keine gespeicherten Einstellungen vorhanden, gelten die Standardbreiten.
+        """
+        import json
+        s = QSettings(ORG_NAME, "FileBrowser")
+
+        # Spaltenbreiten wiederherstellen (Fallback: Standardbreiten aus dem Spec)
+        raw = s.value(SK_COL_WIDTHS)
+        if raw:
+            try:
+                widths = json.loads(raw)
+                hdr = self.tree.header()
+                for col, w in enumerate(widths[:4]):
+                    hdr.resizeSection(col, int(w))
+            except Exception:
+                pass
+
+        # Sortierung wiederherstellen
+        sort_col   = s.value(SK_COL_SORT_COL, 0, type=int)
+        sort_order = s.value(SK_COL_SORT_ORDER, int(Qt.SortOrder.AscendingOrder), type=int)
+        self.tree.sortByColumn(sort_col, Qt.SortOrder(sort_order))
 
     # ── Auswahl-Hilfsmethoden ─────────────────────────────────────────────────
     def _sel_rows(self) -> list[QModelIndex]:
