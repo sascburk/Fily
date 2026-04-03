@@ -50,10 +50,10 @@ class PreviewDrawer(QWidget):
         self.setMinimumWidth(160)
         self.setMaximumWidth(500)
 
-        # Gespeicherte Breite wiederherstellen
+        # Gespeicherte Breite als bevorzugte Breite setzen (nicht fixiert,
+        # damit der Splitter weiterhin die Größe anpassen kann)
         s = QSettings(ORG_NAME, "Preview")
-        w = s.value(SK_PREVIEW_WIDTH, self.DEFAULT_WIDTH, type=int)
-        self.setFixedWidth(w)
+        self._preferred_width = s.value(SK_PREVIEW_WIDTH, self.DEFAULT_WIDTH, type=int)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -190,8 +190,14 @@ class PreviewDrawer(QWidget):
         """Öffentliche clear-Methode für MainWindow."""
         self._clear()
 
+    def sizeHint(self):
+        from PySide6.QtCore import QSize
+        return QSize(self._preferred_width, 400)
+
     def resizeEvent(self, event):
         """Speichert die aktuelle Breite in QSettings."""
         super().resizeEvent(event)
-        s = QSettings(ORG_NAME, "Preview")
-        s.setValue(SK_PREVIEW_WIDTH, self.width())
+        if self.width() > 0:
+            self._preferred_width = self.width()
+            s = QSettings(ORG_NAME, "Preview")
+            s.setValue(SK_PREVIEW_WIDTH, self.width())

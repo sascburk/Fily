@@ -143,7 +143,7 @@ class BreadcrumbBar(QWidget):
         """Kompatibilitäts-Methode: wird von FileBrowser._apply() aufgerufen."""
         self.set_path(text)
 
-    def setFocus(self):
+    def setFocus(self, reason=None):
         self._switch_to_edit()
 
     def selectAll(self):

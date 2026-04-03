@@ -329,6 +329,12 @@ class MainWindow(QMainWindow):
         """Schaltet den Vorschau-Drawer ein/aus (F9 / Space)."""
         visible = not self.preview.isVisible()
         self.preview.setVisible(visible)
+        if visible:
+            # Splitter-Breiten neu verteilen: Preview bekommt seine bevorzugte Breite
+            total = self.splitter.width()
+            pw = self.preview._preferred_width
+            fav_w = self.splitter.sizes()[0]
+            self.splitter.setSizes([fav_w, max(400, total - fav_w - pw), pw])
         s = QSettings(ORG_NAME, "MainWindow")
         s.setValue(SK_PREVIEW_VISIBLE, visible)
 
