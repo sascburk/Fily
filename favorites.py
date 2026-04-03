@@ -11,13 +11,14 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QListView, QFrame, QToolButton, QSizePolicy,
-    QMenu, QInputDialog, QFileDialog, QAbstractItemView, QLabel,
+    QMenu, QInputDialog, QFileDialog, QAbstractItemView, QLabel, QColorDialog,
 )
-from PySide6.QtCore import Qt, QModelIndex, QEvent, Signal, QSize, QItemSelectionModel
+from PySide6.QtCore import Qt, QModelIndex, QEvent, Signal, QSize, QItemSelectionModel, QSettings
 from PySide6.QtGui import (
     QPainter, QColor, QPalette, QLinearGradient, QBrush, QPen,
 )
 
+from config import ORG_NAME, SK_FAV_BG_COLOR
 from models import FavoritesModel
 
 
@@ -32,6 +33,10 @@ class FavoritesPanel(QWidget):
         self.setMaximumWidth(300)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
 
+        s = QSettings(ORG_NAME, "MainWindow")
+        color_val = s.value(SK_FAV_BG_COLOR, "")
+        self._custom_color: QColor | None = QColor(color_val) if color_val else None
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -44,6 +49,8 @@ class FavoritesPanel(QWidget):
         hf.setBold(True)
         self._header.setFont(hf)
         self._header.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self._header.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._header.customContextMenuRequested.connect(self._color_ctx_menu)
         layout.addWidget(self._header)
 
         self.view = QListView()
@@ -90,21 +97,36 @@ class FavoritesPanel(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         r = self.rect()
 
-        bg   = self.palette().color(QPalette.ColorRole.Window)
-        dark = bg.lightness() < 128
-
-        if dark:
-            base_top = QColor(52,  56,  68,  230)
-            base_bot = QColor(38,  41,  52,  240)
-            specular = QColor(120, 140, 180,  45)
-            border_c = QColor(90,  100, 130, 130)
-            tint     = QColor(80,  100, 160,  18)
+        if self._custom_color:
+            c = self._custom_color
+            base_top = QColor(c.red(), c.green(), c.blue(), 220)
+            base_bot = QColor(
+                max(0, c.red() - 15), max(0, c.green() - 15), max(0, c.blue() - 15), 230
+            )
+            dark = c.lightness() < 128
+            if dark:
+                specular = QColor(120, 140, 180,  45)
+                border_c = QColor(90,  100, 130, 130)
+                tint     = QColor(80,  100, 160,  18)
+            else:
+                specular = QColor(255, 255, 255, 160)
+                border_c = QColor(180, 190, 215, 140)
+                tint     = QColor(180, 200, 255,  22)
         else:
-            base_top = QColor(232, 236, 245, 210)
-            base_bot = QColor(215, 220, 235, 220)
-            specular = QColor(255, 255, 255, 160)
-            border_c = QColor(180, 190, 215, 140)
-            tint     = QColor(180, 200, 255,  22)
+            bg   = self.palette().color(QPalette.ColorRole.Window)
+            dark = bg.lightness() < 128
+            if dark:
+                base_top = QColor(52,  56,  68,  230)
+                base_bot = QColor(38,  41,  52,  240)
+                specular = QColor(120, 140, 180,  45)
+                border_c = QColor(90,  100, 130, 130)
+                tint     = QColor(80,  100, 160,  18)
+            else:
+                base_top = QColor(232, 236, 245, 210)
+                base_bot = QColor(215, 220, 235, 220)
+                specular = QColor(255, 255, 255, 160)
+                border_c = QColor(180, 190, 215, 140)
+                tint     = QColor(180, 200, 255,  22)
 
         grad = QLinearGradient(0, 0, 0, r.height())
         grad.setColorAt(0.0, base_top)
@@ -156,6 +178,9 @@ class FavoritesPanel(QWidget):
             remove_action = menu.addAction("Aus Favoriten entfernen")
             menu.addSeparator()
         add_action = menu.addAction("Ordner hinzufügen …")
+        menu.addSeparator()
+        color_action = menu.addAction("Hintergrundfarbe anpassen …")
+        reset_action = menu.addAction("Standardfarbe wiederherstellen")
 
         action = menu.exec(self.view.viewport().mapToGlobal(pos))
         if not action:
@@ -172,6 +197,33 @@ class FavoritesPanel(QWidget):
                 self.model.remove(index.row())
         if action == add_action:
             self._add_dialog()
+        elif action == color_action:
+            self._pick_color()
+        elif action == reset_action:
+            self._reset_color()
+
+    def _color_ctx_menu(self, pos):
+        menu = QMenu(self)
+        color_action = menu.addAction("Hintergrundfarbe anpassen …")
+        reset_action = menu.addAction("Standardfarbe wiederherstellen")
+        action = menu.exec(self._header.mapToGlobal(pos))
+        if action == color_action:
+            self._pick_color()
+        elif action == reset_action:
+            self._reset_color()
+
+    def _pick_color(self):
+        initial = self._custom_color or self.palette().color(QPalette.ColorRole.Window)
+        color = QColorDialog.getColor(initial, self, "Hintergrundfarbe wählen")
+        if color.isValid():
+            self._custom_color = color
+            QSettings(ORG_NAME, "MainWindow").setValue(SK_FAV_BG_COLOR, color.name())
+            self.update()
+
+    def _reset_color(self):
+        self._custom_color = None
+        QSettings(ORG_NAME, "MainWindow").remove(SK_FAV_BG_COLOR)
+        self.update()
 
     def _add_dialog(self):
         opts = QFileDialog.Option.DontUseNativeDialog if sys.platform.startswith("linux") else QFileDialog.Option(0)

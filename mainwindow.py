@@ -120,6 +120,7 @@ class MainWindow(QMainWindow):
         self.splitter.setStretchFactor(0, 0)   # FavoritesPanel: fest
         self.splitter.setStretchFactor(1, 1)   # Browser-Bereich: flexibel
         self.splitter.setStretchFactor(2, 0)   # Preview: fest
+        self.splitter.setCollapsible(0, False)  # Favoritenleiste kann nicht ausgeblendet werden
 
         # Gespeicherten Zustand wiederherstellen
         s = QSettings(ORG_NAME, "MainWindow")

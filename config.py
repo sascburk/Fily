@@ -43,6 +43,7 @@ SK_VIEW_MODE       = "view/mode"           # "list" | "icon"
 SK_LAST_PATH       = "last_path"
 SK_SHOW_HIDDEN     = "show_hidden"
 SK_FDA_HINT        = "fda_hint_shown"
+SK_FAV_BG_COLOR    = "favorites/bg_color"
 
 
 def asset_path(*parts: str) -> Path:
