@@ -242,16 +242,19 @@ class MainWindow(QMainWindow):
         return self._current_browser_in(self.tabs)
 
     def focusNextPrevChild(self, next_: bool) -> bool:
-        """4-Stop Tab-Reihenfolge: Favoriten → Adresse → Suche → Inhalt → zurück."""
+        """3-Stop Tab-Reihenfolge: Favoriten → Ordnerinhalt → Suche → zurück."""
         cur = self.current_browser
         if cur is None:
             return super().focusNextPrevChild(next_)
-        stops = [self.fav_panel.view, cur.addr, cur.search, cur.tree]
+        active_view = cur.icon_view if cur._view_stack.currentIndex() == 1 else cur.tree
+        stops = [self.fav_panel.view, active_view, cur.search]
         focused = QApplication.focusWidget()
         try:
             idx = stops.index(focused)
         except ValueError:
-            return super().focusNextPrevChild(next_)
+            # Fokus ist woanders (z. B. Adressleiste) → zum ersten Stop
+            stops[0].setFocus(Qt.FocusReason.TabFocusReason)
+            return True
         next_idx = (idx + (1 if next_ else -1)) % len(stops)
         stops[next_idx].setFocus(Qt.FocusReason.TabFocusReason)
         return True
