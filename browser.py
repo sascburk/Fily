@@ -29,6 +29,7 @@ from addressbar import BreadcrumbBar
 from fileops import build_ops, safe_trash, reveal_in_filemanager, get_clipboard_paths
 from dialogs import BatchRenameDialog
 from toolbar import BrowserToolbar
+from search_worker import SearchWorker
 
 
 def _show_macos_fda_dialog(parent=None):
@@ -61,6 +62,9 @@ class FileBrowser(QWidget):
         self._select_first_on_load: bool = False
 
         self._build_ui()
+        self._search_worker: SearchWorker | None = None
+        self._search_results: list[str] = []
+        self._in_search_mode: bool = False
         self._install_shortcuts()
         self.navigate(start_path or str(Path.home()))
 
@@ -570,14 +574,51 @@ class FileBrowser(QWidget):
 
     # ── Suche (Groß-/Kleinschreibung ignorieren) ──────────────────────────────
     def _on_search(self, text: str):
-        if text:
-            t = text.lower()
-            # Doppelter Filter fängt beide Schreibweisen ab (macOS APFS case-insensitive)
-            self.model.setNameFilters([f"*{t}*", f"*{t.upper()}*", f"*{text}*"])
-            self.model.setNameFilterDisables(False)
-        else:
+        """Startet eine rekursive Suche oder setzt den normalen Modus wieder her."""
+        # Laufende Suche abbrechen
+        if self._search_worker and self._search_worker.isRunning():
+            self._search_worker.requestInterruption()
+            self._search_worker.wait(200)
+
+        if not text:
+            # Zurück zu normalem Ordner-Inhalt
+            self._in_search_mode = False
             self.model.setNameFilters([])
             self.model.setNameFilterDisables(True)
+            self._apply(self._cur)   # Ordner neu laden
+            return
+
+        # Einfacher Filter für den aktuellen Ordner (sofortige Rückmeldung)
+        self._in_search_mode = False
+        t = text.lower()
+        self.model.setNameFilters([f"*{t}*", f"*{t.upper()}*", f"*{text}*"])
+        self.model.setNameFilterDisables(False)
+
+        # Rekursive Suche im Hintergrund (ab 3 Zeichen)
+        if len(text) >= 3:
+            self._start_recursive_search(text)
+
+    def _start_recursive_search(self, term: str):
+        """Startet SearchWorker für rekursive Suche."""
+        # Bisherige Ergebnisse verwerfen
+        self._search_results = []
+        self._in_search_mode = True
+
+        self._search_worker = SearchWorker(self._cur, term)
+        self._search_worker.result.connect(self._on_search_result)
+        self._search_worker.finished.connect(self._on_search_finished)
+        self._search_worker.start()
+
+    def _on_search_result(self, path: str):
+        """Wird pro gefundenem Ergebnis aufgerufen."""
+        self._search_results.append(path)
+        # Statuszeile aktualisieren
+        self.status.setText(f"Suche … {len(self._search_results)} Treffer")
+
+    def _on_search_finished(self):
+        """Suche abgeschlossen — Ergebnisse in Statuszeile anzeigen."""
+        n = len(self._search_results)
+        self.status.setText(f"{n} Treffer (rekursiv)")
 
     # ── Fokus-Helfer ──────────────────────────────────────────────────────────
     def _focus_addr(self):
