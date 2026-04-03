@@ -360,7 +360,7 @@ class FileBrowser(QWidget):
 
         # Sortierung wiederherstellen
         sort_col   = s.value(SK_COL_SORT_COL, 0, type=int)
-        sort_order = s.value(SK_COL_SORT_ORDER, int(Qt.SortOrder.AscendingOrder), type=int)
+        sort_order = s.value(SK_COL_SORT_ORDER, Qt.SortOrder.AscendingOrder.value, type=int)
         self.tree.sortByColumn(sort_col, Qt.SortOrder(sort_order))
 
     # ── Auswahl-Hilfsmethoden ─────────────────────────────────────────────────
