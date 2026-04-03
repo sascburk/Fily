@@ -47,36 +47,11 @@ from models import FavoritesModel, ExplorerModel
 from treeview import ExplorerTreeView
 from dialogs import BatchRenameDialog, ShortcutsDialog, AboutDialog, _CtrlTabFilter
 from favorites import FavoritesPanel
+from addressbar import AddressBar
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Favoriten-Modell
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Adressleiste
-# ──────────────────────────────────────────────────────────────────────────────
-class AddressBar(QLineEdit):
-    path_entered = Signal(str)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setPlaceholderText("Pfad eingeben …")
-        self.returnPressed.connect(self._commit)
-
-    def _commit(self):
-        p = self.text().strip()
-        if os.path.exists(p):
-            self.path_entered.emit(p)
-        else:
-            QMessageBox.warning(self, "Pfad nicht gefunden",
-                                f"Der Pfad existiert nicht:\n{p}")
-        self.clearFocus()
-
-    def keyPressEvent(self, e):
-        if e.key() == Qt.Key.Key_Escape:
-            self.clearFocus()
-        super().keyPressEvent(e)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
