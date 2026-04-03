@@ -140,7 +140,6 @@ class FileBrowser(QWidget):
         self.tree.customContextMenuRequested.connect(self._ctx_menu)
         self.tree.doubleClicked.connect(self._dbl_click)
         self.tree.selectionModel().selectionChanged.connect(self._sel_changed)
-        self.icon_view.selectionModel().selectionChanged.connect(self._sel_changed)
         self.tree.files_dropped.connect(self._on_files_dropped)
 
         hdr = self.tree.header()
@@ -179,6 +178,7 @@ class FileBrowser(QWidget):
         self.icon_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.icon_view.customContextMenuRequested.connect(self._ctx_menu)
         self.icon_view.doubleClicked.connect(self._dbl_click)
+        self.icon_view.selectionModel().selectionChanged.connect(self._sel_changed)
         self._view_stack.addWidget(self.icon_view)
 
         root.addWidget(self._view_stack, 1)

@@ -94,7 +94,10 @@ class PreviewDrawer(QWidget):
         self._text_content.setWordWrap(True)
         self._text_content.setTextFormat(Qt.TextFormat.PlainText)
         f = self._text_content.font()
-        f.setFamily("Menlo, Consolas, monospace")
+        # QFont.setFamily nimmt nur einen Namen — plattformspezifisch wählen
+        import sys as _sys
+        mono = "Menlo" if _sys.platform == "darwin" else "Consolas" if _sys.platform == "win32" else "monospace"
+        f.setFamily(mono)
         f.setPointSize(10)
         self._text_content.setFont(f)
         self._text_scroll.setWidget(self._text_content)
