@@ -48,6 +48,7 @@ from treeview import ExplorerTreeView
 from dialogs import BatchRenameDialog, ShortcutsDialog, AboutDialog, _CtrlTabFilter
 from favorites import FavoritesPanel
 from addressbar import AddressBar
+from fileops import build_ops, safe_trash, reveal_in_filemanager, get_clipboard_paths
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -327,22 +328,8 @@ class FileBrowser(QWidget):
             self._do_move(paths, dest)
 
     # ── Dateioperationen (intern) ─────────────────────────────────────────────
-    def _build_ops(self, src_paths: list[str], dest_dir: str) -> list[tuple[str, str]]:
-        """Erstellt (src, dst)-Paare mit Namenskonflikt-Auflösung."""
-        ops = []
-        for src in src_paths:
-            dst = Path(dest_dir) / Path(src).name
-            if dst.exists():
-                base, ext = dst.stem, dst.suffix
-                i = 1
-                while dst.exists():
-                    dst = Path(dest_dir) / f"{base} ({i}){ext}"
-                    i += 1
-            ops.append((src, str(dst)))
-        return ops
-
     def _do_copy(self, src_paths: list[str], dest_dir: str):
-        ops = self._build_ops(src_paths, dest_dir)
+        ops = build_ops(src_paths, dest_dir)
         if not ops:
             return
         if len(ops) > 3:
@@ -361,7 +348,7 @@ class FileBrowser(QWidget):
             self.refresh()
 
     def _do_move(self, src_paths: list[str], dest_dir: str):
-        ops = self._build_ops(src_paths, dest_dir)
+        ops = build_ops(src_paths, dest_dir)
         if not ops:
             return
         if len(ops) > 3:
@@ -476,35 +463,8 @@ class FileBrowser(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
         for p in paths:
-            self._trash(p)
+            safe_trash(p, self)
         self.refresh()
-
-    @staticmethod
-    def _trash(path: str):
-        try:
-            _send2trash(path)
-        except Exception:
-            try:
-                if os.path.isdir(path):
-                    shutil.rmtree(path)
-                else:
-                    os.remove(path)
-            except OSError:
-                pass
-
-    @staticmethod
-    def _reveal_in_filemanager(path: str):
-        """Datei/Ordner im nativen Dateimanager anzeigen (cross-platform)."""
-        try:
-            if sys.platform == "darwin":
-                subprocess.run(["open", "-R", path], capture_output=True)
-            elif sys.platform == "win32":
-                subprocess.run(["explorer", "/select,", path.replace("/", "\\")])
-            else:
-                # Linux: Ordner öffnen (xdg-open unterstützt kein --select)
-                subprocess.run(["xdg-open", str(Path(path).parent)], capture_output=True)
-        except Exception:
-            pass
 
     def _copy(self):
         paths = self._sel_paths()
@@ -526,14 +486,26 @@ class FileBrowser(QWidget):
             QApplication.clipboard().setMimeData(md)
 
     def _paste(self):
-        if not self._clip_paths:
-            return
-        mode    = self._clip_mode or "copy"
-        srcs    = list(self._clip_paths)
-        if mode == "cut":
-            self._clip_paths = []
-            self._clip_mode  = None
-        self._do_copy(srcs, self._cur) if mode == "copy" else self._do_move(srcs, self._cur)
+        """Einfügen aus interner oder System-Zwischenablage.
+
+        Bug B2 Fix: Wenn keine interne Zwischenablage vorhanden, wird das
+        System-Clipboard gelesen (Finder/Explorer/Terminal-Kopien).
+        """
+        if self._clip_paths:
+            mode = self._clip_mode or "copy"
+            srcs = list(self._clip_paths)
+            if mode == "cut":
+                self._clip_paths = []
+                self._clip_mode  = None
+            if mode == "copy":
+                self._do_copy(srcs, self._cur)
+            else:
+                self._do_move(srcs, self._cur)
+        else:
+            # Bug B2 Fix: System-Clipboard lesen (Finder/Explorer/Terminal)
+            srcs = get_clipboard_paths()
+            if srcs:
+                self._do_copy(srcs, self._cur)
 
     def _undo(self):
         if not self._undo_stack.can_undo():
@@ -619,7 +591,7 @@ class FileBrowser(QWidget):
                 label = {"darwin": "Im Finder anzeigen",
                          "win32":  "Im Explorer anzeigen"}.get(sys.platform, "Im Dateimanager anzeigen")
                 a_finder = menu.addAction(label)
-                a_finder.triggered.connect(lambda: self._reveal_in_filemanager(paths[0]))
+                a_finder.triggered.connect(lambda: reveal_in_filemanager(paths[0]))
             menu.addSeparator()
             a_cut = menu.addAction("Ausschneiden\tCtrl+X")
             a_cut.triggered.connect(self._cut)
