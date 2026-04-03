@@ -154,13 +154,17 @@ class BreadcrumbBar(QWidget):
                                 f"Der Pfad existiert nicht:\n{p}")
 
     def eventFilter(self, obj, event):
-        """Escape im Textfeld: zurück zu Breadcrumbs ohne Navigation."""
+        """Escape und Fokus-Verlust im Textfeld: zurück zu Breadcrumbs."""
         from PySide6.QtCore import QEvent
-        if obj is self._edit and event.type() == QEvent.Type.KeyPress:
-            from PySide6.QtCore import Qt
-            if event.key() == Qt.Key.Key_Escape:
+        if obj is self._edit:
+            if event.type() == QEvent.Type.KeyPress:
+                from PySide6.QtCore import Qt
+                if event.key() == Qt.Key.Key_Escape:
+                    self._switch_to_crumbs()
+                    return True
+            elif event.type() == QEvent.Type.FocusOut:
+                # Fokus-Verlust → Breadcrumb-Modus (außer wenn QMessageBox aktiv ist)
                 self._switch_to_crumbs()
-                return True
         return super().eventFilter(obj, event)
 
     # ── Kompatibilität mit FileBrowser (ersetzt AddressBar-API) ──────────────
