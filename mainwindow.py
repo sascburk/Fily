@@ -161,18 +161,29 @@ class MainWindow(QMainWindow):
         tear_bar.setExpanding(False)   # Tabs linksbündig, nicht gestreckt
         tear_bar.tab_detached.connect(self._detach_tab)
         tw.setTabBar(tear_bar)
-        tw.setTabsClosable(True)
+        tw.setTabsClosable(False)  # Eigene Buttons via _add_close_btn
         tw.setMovable(True)
-        tw.tabCloseRequested.connect(lambda idx, t=tw: self._close_tab(idx, t))
+        tw.setDocumentMode(True)
         tw.currentChanged.connect(lambda idx, t=tw: self._tab_changed(idx, t))
 
         btn_new = QToolButton()
-        btn_new.setText("+")
+        btn_new.setText(" + ")
         btn_new.setToolTip("Neuer Tab  (Ctrl+T)")
         btn_new.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         btn_new.clicked.connect(lambda: self._new_tab(tw))
         tw.setCornerWidget(btn_new, Qt.Corner.TopRightCorner)
         return tw
+
+    def _add_close_btn(self, tw: QTabWidget, idx: int, browser: "FileBrowser"):
+        """Setzt einen Schließen-Button rechts auf den Tab."""
+        btn = QToolButton()
+        btn.setText("✕")
+        btn.setFixedSize(16, 16)
+        btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        btn.setAutoRaise(True)
+        btn.setToolTip("Tab schließen")
+        btn.clicked.connect(lambda _, w=browser, t=tw: self._close_tab(t.indexOf(w), t))
+        tw.tabBar().setTabButton(idx, QTabBar.ButtonPosition.RightSide, btn)
 
     def _add_tab(self, path: str | None = None, tab_widget: QTabWidget | None = None) -> "FileBrowser":
         """Fügt einen neuen Tab hinzu und gibt den Browser zurück."""
@@ -183,6 +194,7 @@ class MainWindow(QMainWindow):
         browser.selection_changed.connect(self._on_selection_changed)
         name = Path(path).name if path else "Home"
         idx = tw.addTab(browser, name or "/")
+        self._add_close_btn(tw, idx, browser)
         tw.setCurrentIndex(idx)
         return browser
 
@@ -194,6 +206,7 @@ class MainWindow(QMainWindow):
         browser.selection_changed.connect(self._on_selection_changed)
         name = Path(browser.current_path).name or "/"
         idx = tw.addTab(browser, name)
+        self._add_close_btn(tw, idx, browser)
         tw.setCurrentIndex(idx)
 
     def _detach_tab(self, idx: int, global_pos):
