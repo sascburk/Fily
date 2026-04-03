@@ -33,24 +33,15 @@ from PySide6.QtGui import (
     QPainter, QLinearGradient, QBrush, QPen,
 )
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Konfiguration
-# ──────────────────────────────────────────────────────────────────────────────
-APP_NAME   = "Fily"
-ORG_NAME   = "Fily"
-CONFIG_DIR = Path.home() / ".config" / "fily"
-FAV_FILE   = CONFIG_DIR / "favorites.json"
-
-DEFAULT_FAVORITES = [
-    {"name": "Home",      "path": str(Path.home())},
-    {"name": "Desktop",   "path": str(Path.home() / "Desktop")},
-    {"name": "Documents", "path": str(Path.home() / "Documents")},
-    {"name": "Downloads", "path": str(Path.home() / "Downloads")},
-    {"name": "Pictures",  "path": str(Path.home() / "Pictures")},
-    {"name": "Music",     "path": str(Path.home() / "Music")},
-    {"name": "Movies",    "path": str(Path.home() / "Movies")},
-]
+from config import (
+    APP_NAME, ORG_NAME, VERSION, BUYMEACOFFEE_URL, GITHUB_URL,
+    CONFIG_DIR, FAV_FILE, DEFAULT_FAVORITES,
+    SK_GEOMETRY, SK_SPLITTER_MAIN, SK_SPLITTER_PANE,
+    SK_PREVIEW_VISIBLE, SK_PREVIEW_WIDTH,
+    SK_COL_WIDTHS, SK_COL_SORT_COL, SK_COL_SORT_ORDER,
+    SK_VIEW_MODE, SK_LAST_PATH, SK_SHOW_HIDDEN, SK_FDA_HINT,
+    asset_path,
+)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1400,9 +1391,6 @@ class ShortcutsDialog(QDialog):
 # ──────────────────────────────────────────────────────────────────────────────
 # Über-Dialog
 # ──────────────────────────────────────────────────────────────────────────────
-BUYMEACOFFEE_URL = "https://buymeacoffee.com/buged86o"
-GITHUB_URL       = "https://github.com/sascburk/fily"
-
 class AboutDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1868,12 +1856,6 @@ def _apply_dark_palette(app: QApplication) -> None:
     app.setPalette(p)
 
 
-def _asset_path(*parts: str) -> Path:
-    """Resolve a path inside assets/ — works both from source and PyInstaller bundle."""
-    base = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
-    return base.joinpath(*parts)
-
-
 def _macos_show_fda_dialog(parent=None) -> None:
     """Zeigt einmalig pro App-Start einen Dialog für Full Disk Access (macOS).
 
@@ -1962,11 +1944,11 @@ def main():
                 )
         except Exception:
             pass
-        icon_path = _asset_path("assets", "icons", "windows", "icon.ico")
+        icon_path = asset_path("assets", "icons", "windows", "icon.ico")
         if icon_path.exists():
             app.setWindowIcon(QIcon(str(icon_path)))
     elif sys.platform.startswith("linux"):
-        icon_path = _asset_path("assets", "icons", "linux", "256x256.png")
+        icon_path = asset_path("assets", "icons", "linux", "256x256.png")
         if icon_path.exists():
             app.setWindowIcon(QIcon(str(icon_path)))
         # GNOME verknüpft die laufende App mit dem .desktop-Eintrag über
