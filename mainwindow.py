@@ -162,7 +162,6 @@ class MainWindow(QMainWindow):
         tw.setTabBar(tear_bar)
         tw.setTabsClosable(True)
         tw.setMovable(True)
-        tw.setDocumentMode(True)
         tw.tabCloseRequested.connect(lambda idx, t=tw: self._close_tab(idx, t))
         tw.currentChanged.connect(lambda idx, t=tw: self._tab_changed(idx, t))
 
