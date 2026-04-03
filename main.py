@@ -1403,7 +1403,7 @@ class AboutDialog(QDialog):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
-        version = QLabel("Version 1.3.0")
+        version = QLabel(f"Version {VERSION}")
         version.setAlignment(Qt.AlignmentFlag.AlignCenter)
         version.setStyleSheet("color: gray; font-size: 11px;")
         layout.addWidget(version)
