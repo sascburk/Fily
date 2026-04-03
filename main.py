@@ -19,40 +19,46 @@ from mainwindow import MainWindow
 
 
 def _linux_is_dark() -> bool:
-    """Erkennt Dark Mode auf Linux: gsettings → GTK-Config-Dateien."""
-    # Methode 1: GNOME gsettings
+    """Erkennt Dark Mode auf Linux.
+
+    Reihenfolge: gsettings → GTK-Config-Dateien → dconf (letzter Fallback).
+    Bug B6 Fix: dconf-Binärparsing ist jetzt letzter Fallback mit Try/Except.
+    Wenn gsettings antwortet (kein Fehler), gilt sein Ergebnis — egal ob dark
+    oder nicht; weitere Methoden werden dann nicht mehr geprüft.
+    """
+    # Methode 1: GNOME gsettings (zuverlässigste Methode)
     try:
         out = subprocess.check_output(
             ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
             stderr=subprocess.DEVNULL, timeout=2,
         ).decode().strip().strip("'\"")
-        if "dark" in out.lower():
-            return True
+        # gsettings hat geantwortet → Ergebnis ist definitiv, kein weiteres Prüfen
+        return "dark" in out.lower()
     except Exception:
-        pass
+        pass  # gsettings nicht verfügbar → nächste Methode
 
-    # Methode 2: dconf-Datenbank direkt lesen (kein D-Bus nötig).
-    # gsettings/dconf speichern den Wert als lesbaren String in der Binärdatei.
-    try:
-        data = (Path.home() / ".config" / "dconf" / "user").read_bytes()
-        if b"prefer-dark" in data:
-            return True
-    except Exception:
-        pass
-
-    # Methode 3: GTK-Config-Datei (~/.config/gtk-4.0 oder gtk-3.0)
+    # Methode 2: GTK-Config-Dateien (~/.config/gtk-4.0 oder gtk-3.0)
     for conf in [
         Path.home() / ".config" / "gtk-4.0" / "settings.ini",
         Path.home() / ".config" / "gtk-3.0" / "settings.ini",
     ]:
         try:
             text = conf.read_text(encoding="utf-8").lower()
-            if "gtk-application-prefer-dark-theme=1" in text or \
-               "gtk-application-prefer-dark-theme=true" in text or \
-               "color-scheme=prefer-dark" in text:
+            if ("gtk-application-prefer-dark-theme=1" in text or
+                    "gtk-application-prefer-dark-theme=true" in text or
+                    "color-scheme=prefer-dark" in text):
                 return True
         except Exception:
             pass
+
+    # Methode 3: dconf-Binärsuche (letzter Fallback, fehleranfällig)
+    # Nur ausgeführt wenn gsettings nicht verfügbar und keine GTK-Konfig gefunden.
+    try:
+        data = (Path.home() / ".config" / "dconf" / "user").read_bytes()
+        if b"prefer-dark" in data:
+            return True
+    except Exception:
+        pass
 
     return False
 
