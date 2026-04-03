@@ -260,7 +260,7 @@ class MainWindow(QMainWindow):
         if cur is None:
             return super().focusNextPrevChild(next_)
         active_view = cur.icon_view if cur._view_stack.currentIndex() == 1 else cur.tree
-        stops = [self.fav_panel.view, active_view, cur.search]
+        stops = [self.fav_panel.view, cur.search, active_view]
         focused = QApplication.focusWidget()
         try:
             idx = stops.index(focused)
