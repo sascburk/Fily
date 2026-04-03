@@ -33,12 +33,16 @@ class BreadcrumbBar(QWidget):
         super().__init__(parent)
         self._current_path = ""
 
+        # Tab soll die Adressleiste überspringen; Fokus nur per Klick / explizitem Aufruf
+        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
         # ── Stacked Widget: Breadcrumb oder Textfeld ──────────────────────────
         self._stack = QStackedWidget()
+        self._stack.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         layout.addWidget(self._stack, 1)
 
         # Seite 0: Breadcrumb-Ansicht
@@ -71,7 +75,11 @@ class BreadcrumbBar(QWidget):
     # ── Interne Methoden ──────────────────────────────────────────────────────
 
     def _rebuild_crumbs(self, path: str):
-        """Löscht alle alten Segment-Buttons und baut neue auf."""
+        """Löscht alle alten Segment-Buttons und baut neue auf.
+
+        Zeigt maximal die letzten 3 Segmente; bei längerem Pfad erscheint
+        ein „…"-Label als erster Eintrag.
+        """
         # Alle Widgets außer dem abschließenden Stretch entfernen
         while self._crumb_layout.count() > 1:
             item = self._crumb_layout.takeAt(0)
@@ -79,31 +87,49 @@ class BreadcrumbBar(QWidget):
                 item.widget().deleteLater()
 
         parts = Path(path).parts  # z. B. ('/', 'Users', 'max', 'Documents')
-        accumulated = ""
-        for i, part in enumerate(parts):
-            # Pfad aufbauen: unter Windows ist parts[0] z. B. 'C:\\'
-            if i == 0:
-                accumulated = part
-            else:
-                accumulated = str(Path(accumulated) / part)
 
-            # Segment-Label
-            btn = QPushButton(part if part != "/" else "⌂")
+        # Akkumulierte Pfade für alle Segmente vorberechnen
+        accumulated = []
+        acc = ""
+        for i, part in enumerate(parts):
+            acc = part if i == 0 else str(Path(acc) / part)
+            accumulated.append((part, acc))
+
+        # Nur die letzten 3 Segmente anzeigen
+        MAX_CRUMBS = 3
+        visible = accumulated[-MAX_CRUMBS:]
+        truncated = len(accumulated) > MAX_CRUMBS
+
+        # „…"-Platzhalter wenn Pfad abgeschnitten wurde
+        if truncated:
+            ellipsis = QLabel(" … ")
+            ellipsis.setStyleSheet("color: palette(mid);")
+            ellipsis.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self._crumb_layout.insertWidget(self._crumb_layout.count() - 1, ellipsis)
+            sep = QLabel(" › ")
+            sep.setStyleSheet("color: palette(mid);")
+            sep.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self._crumb_layout.insertWidget(self._crumb_layout.count() - 1, sep)
+
+        for idx, (part, snap) in enumerate(visible):
+            label = part if part != "/" else "⌂"
+            btn = QPushButton(label)
             btn.setFlat(True)
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
             btn.setStyleSheet(
                 "QPushButton { border: none; padding: 2px 4px; text-decoration: underline; }"
                 "QPushButton:hover { color: palette(highlight); }"
             )
-            snap = accumulated  # Closure-Snapshot
             btn.clicked.connect(lambda _, p=snap: self.path_entered.emit(p))
             btn.mouseDoubleClickEvent = lambda e: self._switch_to_edit()
             self._crumb_layout.insertWidget(self._crumb_layout.count() - 1, btn)
 
             # Trennzeichen › (nicht nach letztem Segment)
-            if i < len(parts) - 1:
+            if idx < len(visible) - 1:
                 sep = QLabel(" › ")
                 sep.setStyleSheet("color: palette(mid);")
+                sep.setFocusPolicy(Qt.FocusPolicy.NoFocus)
                 self._crumb_layout.insertWidget(self._crumb_layout.count() - 1, sep)
 
     def _switch_to_edit(self):
@@ -144,7 +170,15 @@ class BreadcrumbBar(QWidget):
         self.set_path(text)
 
     def setFocus(self, reason=None):
-        self._switch_to_edit()
+        # Nur bei explizitem Fokus (Tastenkürzel) in Textfeld wechseln,
+        # nicht bei Tab-Navigation (TabFocusReason / BacktabFocusReason).
+        from PySide6.QtCore import Qt as _Qt
+        tab_reasons = {
+            _Qt.FocusReason.TabFocusReason,
+            _Qt.FocusReason.BacktabFocusReason,
+        }
+        if reason not in tab_reasons:
+            self._switch_to_edit()
 
     def selectAll(self):
         self._edit.selectAll()
