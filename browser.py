@@ -25,7 +25,7 @@ from config import ORG_NAME, SK_SHOW_HIDDEN, SK_COL_WIDTHS, SK_COL_SORT_COL, SK_
 from models import ExplorerModel
 from workers import UndoStack, CopyWorker
 from treeview import ExplorerTreeView
-from addressbar import AddressBar
+from addressbar import BreadcrumbBar
 from fileops import build_ops, safe_trash, reveal_in_filemanager, get_clipboard_paths
 from dialogs import BatchRenameDialog
 
@@ -103,7 +103,7 @@ class FileBrowser(QWidget):
         self.btn_up.clicked.connect(self.go_up)
         self.btn_reload.clicked.connect(self.refresh)
 
-        self.addr = AddressBar()
+        self.addr = BreadcrumbBar()
         self.addr.path_entered.connect(self.navigate)
 
         self.search = QLineEdit()
