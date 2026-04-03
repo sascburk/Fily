@@ -13,9 +13,10 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QScrollArea, QSizePolicy, QFrame,
+    QFileIconProvider,
 )
 from PySide6.QtCore import Qt, QSize, QSettings, QFileInfo
-from PySide6.QtGui import QPixmap, QFileIconProvider, QColor, QPainter, QFont
+from PySide6.QtGui import QPixmap, QColor, QPainter, QFont
 
 from config import ORG_NAME, SK_PREVIEW_WIDTH
 from models import ExplorerModel
