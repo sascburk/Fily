@@ -1,5 +1,11 @@
 # fily_app.spec — PyInstaller-Spec für Fily 2.0
 # Alle Module sind auf oberster Ebene (flat structure) → kein Paket nötig.
+#
+# macOS:   → dist/Fily.app  (BUNDLE, kein Terminal, .icns-Icon)
+# Windows: → dist/Fily.exe  (EXE, kein Terminal, .ico-Icon)
+# Linux:   → dist/fily      (EXE, kein Terminal)
+
+import sys
 
 block_cipher = None
 
@@ -31,13 +37,21 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+# Plattformspezifisches Icon
+if sys.platform == 'darwin':
+    _icon = 'assets/icons/macos/icon.icns'
+elif sys.platform == 'win32':
+    _icon = 'assets/icons/windows/icon.ico'
+else:
+    _icon = None
+
 exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
     a.datas,
     [],
-    name='fily',
+    name='Fily',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -49,6 +63,22 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # Windows: Icon
-    icon='assets/icons/windows/icon.ico',
+    icon=_icon,
 )
+
+# macOS: .app-Bundle erstellen
+if sys.platform == 'darwin':
+    app = BUNDLE(
+        exe,
+        name='Fily.app',
+        icon='assets/icons/macos/icon.icns',
+        bundle_identifier='com.fily.app',
+        info_plist={
+            'CFBundleDisplayName': 'Fily',
+            'CFBundleShortVersionString': '2.0',
+            'NSHighResolutionCapable': True,
+            'NSPrincipalClass': 'NSApplication',
+            'NSAppleScriptEnabled': False,
+            'LSMinimumSystemVersion': '12.0',
+        },
+    )

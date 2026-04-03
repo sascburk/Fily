@@ -63,26 +63,45 @@ python main.py
 
 ### macOS — `.app`
 
-**Requirements:** Xcode Command Line Tools (`xcode-select --install`)
+**Requirements:** Python 3.13+ and Xcode Command Line Tools
 
 ```bash
-chmod +x build_app.sh
-./build_app.sh
+xcode-select --install   # falls noch nicht installiert
 ```
 
-→ Result: `dist/Fily.app`
+**Build:**
 
-**Install to Applications:**
 ```bash
-cp -R "dist/Fily.app" /Applications/
+# Einmalig: virtuelle Umgebung + Abhängigkeiten
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# App bauen (alternativ: ./build_app.sh erledigt alles automatisch)
+pyinstaller fily_app.spec
 ```
 
-**Optional: Code signing** (needed if you want to share it without scary warnings)
+→ Ergebnis: `dist/Fily.app` — doppelklickbar, mit Icon, ohne Terminal
+
+**Starten:**
+```bash
+open dist/Fily.app
+```
+
+**In Programme-Ordner installieren:**
+```bash
+cp -R dist/Fily.app /Applications/
+```
+
+**Optional: Code-Signierung** (damit macOS keine Warnung zeigt beim Weitergeben)
 ```bash
 codesign --deep --force --verify --verbose \
-  --sign "Developer ID Application: Your Name (TEAMID)" \
-  "dist/Fily.app"
+  --sign "Developer ID Application: Dein Name (TEAMID)" \
+  dist/Fily.app
 ```
+
+> **Hinweis:** Beim ersten Start nach der Installation ggf. Rechtsklick → „Öffnen" wählen,
+> falls Gatekeeper die App blockiert (nur bei nicht signierten Builds).
 
 ---
 
