@@ -165,51 +165,11 @@ class MainWindow(QMainWindow):
         tw.setMovable(True)
         tw.tabCloseRequested.connect(lambda idx, t=tw: self._close_tab(idx, t))
         tw.currentChanged.connect(lambda idx, t=tw: self._tab_changed(idx, t))
-        tw.setStyleSheet("""
-            QTabBar::tab {
-                padding: 4px 10px 4px 10px;
-                min-width: 80px;
-                max-width: 200px;
-                border-top-left-radius: 6px;
-                border-top-right-radius: 6px;
-                border: 1px solid palette(mid);
-                border-bottom: none;
-                margin-right: 2px;
-            }
-            QTabBar::tab:selected {
-                background: palette(window);
-                border-bottom: 2px solid palette(window);
-            }
-            QTabBar::tab:!selected {
-                background: palette(dark);
-                color: palette(mid);
-                margin-top: 2px;
-            }
-            QTabBar::tab:!selected:hover {
-                background: palette(midlight);
-                color: palette(text);
-            }
-            QTabBar::close-button {
-                subcontrol-position: right;
-            }
-        """)
 
         btn_new = QToolButton()
         btn_new.setText("+")
         btn_new.setToolTip("Neuer Tab  (Ctrl+T)")
         btn_new.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        btn_new.setFixedSize(24, 24)
-        btn_new.setStyleSheet("""
-            QToolButton {
-                border: 1px solid palette(mid);
-                border-radius: 4px;
-                font-size: 16px;
-                font-weight: bold;
-                margin: 3px 4px;
-            }
-            QToolButton:hover  { background: palette(midlight); }
-            QToolButton:pressed { background: palette(dark); }
-        """)
         btn_new.clicked.connect(lambda: self._new_tab(tw))
         tw.setCornerWidget(btn_new, Qt.Corner.TopRightCorner)
         return tw
