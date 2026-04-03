@@ -157,6 +157,7 @@ class MainWindow(QMainWindow):
         """Erstellt ein konfiguriertes QTabWidget mit TearOffTabBar."""
         tw = QTabWidget()
         tear_bar = TearOffTabBar()
+        tear_bar.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         tear_bar.tab_detached.connect(self._detach_tab)
         tw.setTabBar(tear_bar)
         tw.setTabsClosable(True)
