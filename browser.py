@@ -28,6 +28,7 @@ from treeview import ExplorerTreeView
 from addressbar import BreadcrumbBar
 from fileops import build_ops, safe_trash, reveal_in_filemanager, get_clipboard_paths
 from dialogs import BatchRenameDialog
+from toolbar import BrowserToolbar
 
 
 def _show_macos_fda_dialog(parent=None):
@@ -69,39 +70,26 @@ class FileBrowser(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        tb = QWidget()
-        tb.setFixedHeight(38)
-        tbl = QHBoxLayout(tb)
-        tbl.setContentsMargins(6, 3, 6, 3)
-        tbl.setSpacing(4)
+        # ── Toolbar ───────────────────────────────────────────────────────────────
+        self.toolbar = BrowserToolbar()
+        self.toolbar.back_clicked.connect(self.go_back)
+        self.toolbar.forward_clicked.connect(self.go_forward)
+        self.toolbar.up_clicked.connect(self.go_up)
+        self.toolbar.reload_clicked.connect(self.refresh)
+        self.toolbar.new_folder_clicked.connect(self._new_folder)
+        self.toolbar.view_toggle.connect(self._toggle_view_mode)
+        root.addWidget(self.toolbar)
 
-        def nav_btn(tip, arrow=None, text=None):
-            btn = QToolButton()
-            btn.setToolTip(tip)
-            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            if arrow:
-                btn.setArrowType(arrow)
-            if text:
-                btn.setText(text)
-                f = btn.font()
-                if f.pointSize() > 0:
-                    f.setPointSize(13)
-                btn.setFont(f)
-            btn.setFixedSize(28, 28)
-            return btn
+        # Kompatibilitäts-Aliase: _update_nav_btns() referenziert btn_back/btn_forward
+        self.btn_back    = self.toolbar.btn_back
+        self.btn_forward = self.toolbar.btn_forward
 
-        self.btn_back    = nav_btn("Zurück  (Alt+←)",       Qt.ArrowType.LeftArrow)
-        self.btn_forward = nav_btn("Vor  (Alt+→)",           Qt.ArrowType.RightArrow)
-        self.btn_up      = nav_btn("Übergeordnet  (Alt+↑)",  text="↑")
-        self.btn_reload  = nav_btn("Aktualisieren  (F5)",    text="↺")
-
-        self.btn_back.setEnabled(False)
-        self.btn_forward.setEnabled(False)
-
-        self.btn_back.clicked.connect(self.go_back)
-        self.btn_forward.clicked.connect(self.go_forward)
-        self.btn_up.clicked.connect(self.go_up)
-        self.btn_reload.clicked.connect(self.refresh)
+        # ── Adresszeile ───────────────────────────────────────────────────────────
+        addr_row = QWidget()
+        addr_row.setFixedHeight(38)
+        addr_layout = QHBoxLayout(addr_row)
+        addr_layout.setContentsMargins(6, 3, 6, 3)
+        addr_layout.setSpacing(4)
 
         self.addr = BreadcrumbBar()
         self.addr.path_entered.connect(self.navigate)
@@ -111,14 +99,9 @@ class FileBrowser(QWidget):
         self.search.setFixedWidth(170)
         self.search.textChanged.connect(self._on_search)
 
-        tbl.addWidget(self.btn_back)
-        tbl.addWidget(self.btn_forward)
-        tbl.addWidget(self.btn_up)
-        tbl.addWidget(self.btn_reload)
-        tbl.addSpacing(4)
-        tbl.addWidget(self.addr, 1)
-        tbl.addWidget(self.search)
-        root.addWidget(tb)
+        addr_layout.addWidget(self.addr, 1)
+        addr_layout.addWidget(self.search)
+        root.addWidget(addr_row)
 
         line = QFrame()
         line.setFrameShape(QFrame.Shape.HLine)
