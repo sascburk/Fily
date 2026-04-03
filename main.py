@@ -1,61 +1,23 @@
 #!/usr/bin/env python3
 """
-Fily — Ein plattformübergreifender Dateiexplorer
-Gebaut mit Python und PySide6 | Läuft auf macOS, Linux, Windows
-"""
+main.py — Einstiegspunkt für Fily.
 
+Enthält nur: Plattform-Setup (Dark Mode, Icons, FDA-Dialog) und main().
+Alle Klassen sind in separate Module ausgelagert.
+"""
 import sys
 import os
-import json
-import shutil
 import subprocess
 from pathlib import Path
 
-from send2trash import send2trash as _send2trash
+from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtCore import QSettings
+from PySide6.QtGui import QIcon, QColor, QPalette
 
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QSplitter, QTreeView, QListView, QLabel, QLineEdit, QToolButton,
-    QFrame, QMenu, QMessageBox, QInputDialog, QAbstractItemView,
-    QHeaderView, QFileDialog, QSizePolicy, QPushButton,
-    QFileSystemModel, QFileIconProvider,
-    QTabWidget, QTabBar, QProgressDialog, QDialog, QDialogButtonBox,
-    QTableWidget, QTableWidgetItem,
-)
-from PySide6.QtCore import (
-    Qt, QObject, QModelIndex, QAbstractListModel, Signal, QTimer, QSettings,
-    QMimeData, QUrl, QDir, QFileInfo, QSize, QThread, QEvent,
-    QItemSelectionModel,
-)
-from PySide6.QtGui import (
-    QKeySequence, QShortcut,
-    QDesktopServices, QIcon, QColor, QPalette, QAction, QFont,
-    QPainter, QLinearGradient, QBrush, QPen,
-)
-
-from config import (
-    APP_NAME, ORG_NAME, VERSION, BUYMEACOFFEE_URL, GITHUB_URL,
-    CONFIG_DIR, FAV_FILE, DEFAULT_FAVORITES,
-    SK_GEOMETRY, SK_SPLITTER_MAIN, SK_SPLITTER_PANE,
-    SK_PREVIEW_VISIBLE, SK_PREVIEW_WIDTH,
-    SK_COL_WIDTHS, SK_COL_SORT_COL, SK_COL_SORT_ORDER,
-    SK_VIEW_MODE, SK_LAST_PATH, SK_SHOW_HIDDEN, SK_FDA_HINT,
-    asset_path,
-)
-from workers import UndoStack, CopyWorker
-from models import FavoritesModel, ExplorerModel
-from treeview import ExplorerTreeView
-from dialogs import BatchRenameDialog, ShortcutsDialog, AboutDialog, _CtrlTabFilter
-from favorites import FavoritesPanel
-from addressbar import AddressBar
-from fileops import build_ops, safe_trash, reveal_in_filemanager, get_clipboard_paths
-from browser import FileBrowser
-from mainwindow import MainWindow, TearOffTabBar
+from config import APP_NAME, ORG_NAME, VERSION, SK_FDA_HINT, asset_path
+from mainwindow import MainWindow
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Einstiegspunkt
-# ──────────────────────────────────────────────────────────────────────────────
 def _linux_is_dark() -> bool:
     """Erkennt Dark Mode auf Linux: gsettings → GTK-Config-Dateien."""
     # Methode 1: GNOME gsettings
