@@ -140,6 +140,7 @@ class FileBrowser(QWidget):
         self.tree.customContextMenuRequested.connect(self._ctx_menu)
         self.tree.doubleClicked.connect(self._dbl_click)
         self.tree.selectionModel().selectionChanged.connect(self._sel_changed)
+        self.icon_view.selectionModel().selectionChanged.connect(self._sel_changed)
         self.tree.files_dropped.connect(self._on_files_dropped)
 
         hdr = self.tree.header()
@@ -174,7 +175,6 @@ class FileBrowser(QWidget):
         self.icon_view.setSpacing(4)
         self.icon_view.setUniformItemSizes(True)
         self.icon_view.setModel(self.model)
-        self.icon_view.setRootIndex(self.model.index(str(Path.home())))
         self.icon_view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.icon_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.icon_view.customContextMenuRequested.connect(self._ctx_menu)
@@ -297,7 +297,8 @@ class FileBrowser(QWidget):
 
     def _update_status(self):
         """Aktualisiert Statuszeile: Auswahl, Gesamtanzahl, Speicherplatz."""
-        sel = self.tree.selectionModel().selectedRows()
+        active_view = self.icon_view if self._view_stack.currentIndex() == 1 else self.tree
+        sel = active_view.selectionModel().selectedRows()
         try:
             total = len(os.listdir(self._cur))
         except PermissionError:
@@ -364,10 +365,22 @@ class FileBrowser(QWidget):
 
     # ── Auswahl-Hilfsmethoden ─────────────────────────────────────────────────
     def _sel_rows(self) -> list[QModelIndex]:
-        return self.tree.selectionModel().selectedRows(0)
+        active_view = self.icon_view if self._view_stack.currentIndex() == 1 else self.tree
+        return active_view.selectionModel().selectedRows(0)
 
     def _sel_paths(self) -> list[str]:
-        return [self.model.filePath(i) for i in self._sel_rows()]
+        """Gibt die Pfade aller selektierten Einträge zurück."""
+        active_view = self.icon_view if self._view_stack.currentIndex() == 1 else self.tree
+        indexes = active_view.selectionModel().selectedIndexes()
+        paths = []
+        seen = set()
+        for idx in indexes:
+            if idx.column() == 0:
+                p = self.model.filePath(idx)
+                if p not in seen:
+                    seen.add(p)
+                    paths.append(p)
+        return paths
 
     def _sel_changed(self):
         self._update_status()
@@ -678,7 +691,9 @@ class FileBrowser(QWidget):
 
     # ── Kontextmenü ──────────────────────────────────────────────────────────
     def _ctx_menu(self, pos):
-        index = self.tree.indexAt(pos)
+        # Ermittle die aktive Ansicht (Liste oder Icon-Raster)
+        active_view = self.icon_view if self._view_stack.currentIndex() == 1 else self.tree
+        index = active_view.indexAt(pos)
         paths = self._sel_paths()
         menu  = QMenu(self)
 
@@ -730,7 +745,7 @@ class FileBrowser(QWidget):
             a_fav = menu.addAction("Aktuellen Ordner zu Favoriten")
             a_fav.triggered.connect(lambda: self.request_add_fav.emit(self._cur))
 
-        menu.exec(self.tree.viewport().mapToGlobal(pos))
+        menu.exec(active_view.viewport().mapToGlobal(pos))
 
     def _toggle_hidden(self):
         f = self.model.filter()
