@@ -14,10 +14,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSettings, Signal, QPoint, QUrl, QEvent
 from PySide6.QtGui import QAction, QKeySequence, QDesktopServices, QShortcut
 
-from config import APP_NAME, ORG_NAME, BUYMEACOFFEE_URL, GITHUB_URL, SK_GEOMETRY, SK_SPLITTER_MAIN, SK_LAST_PATH
+from config import APP_NAME, ORG_NAME, BUYMEACOFFEE_URL, GITHUB_URL, SK_GEOMETRY, SK_SPLITTER_MAIN, SK_LAST_PATH, SK_PREVIEW_VISIBLE, SK_PREVIEW_WIDTH
 from browser import FileBrowser
 from favorites import FavoritesPanel
 from dialogs import ShortcutsDialog, AboutDialog, _CtrlTabFilter
+from preview import PreviewDrawer
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -120,11 +121,20 @@ class MainWindow(QMainWindow):
 
         self.splitter.addWidget(self.fav_panel)
         self.splitter.addWidget(self.tabs)
-        self.splitter.setStretchFactor(0, 0)
-        self.splitter.setStretchFactor(1, 1)
-        self.splitter.setSizes([190, 900])
 
-        sp = s.value("splitter")
+        # Vorschau-Drawer (rechts, per F9 ein-/ausblendbar)
+        self.preview = PreviewDrawer()
+        self.splitter.addWidget(self.preview)
+        self.splitter.setStretchFactor(0, 0)   # FavoritesPanel: fest
+        self.splitter.setStretchFactor(1, 1)   # Tabs: flexibel
+        self.splitter.setStretchFactor(2, 0)   # Preview: fest
+        self.splitter.setSizes([190, 900, 0])
+
+        # Vorschau-Zustand wiederherstellen
+        preview_visible = s.value(SK_PREVIEW_VISIBLE, False, type=bool)
+        self.preview.setVisible(preview_visible)
+
+        sp = s.value(SK_SPLITTER_MAIN)
         if sp:
             self.splitter.restoreState(sp)
 
@@ -134,6 +144,7 @@ class MainWindow(QMainWindow):
         """Fügt einen neuen Tab hinzu und gibt den Browser zurück."""
         browser = FileBrowser(path)
         browser.path_changed.connect(self._path_changed)
+        browser.selection_changed.connect(self._on_selection_changed)
         browser.request_add_fav.connect(self.fav_panel.add_current)
         name = Path(path).name if path else "Home"
         idx = self.tabs.addTab(browser, name or "/")
@@ -143,6 +154,7 @@ class MainWindow(QMainWindow):
     def _add_existing_tab(self, browser: "FileBrowser"):
         """Nimmt einen bestehenden Browser-Widget auf (z. B. nach Tear-Off)."""
         browser.path_changed.connect(self._path_changed)
+        browser.selection_changed.connect(self._on_selection_changed)
         browser.request_add_fav.connect(self.fav_panel.add_current)
         name = Path(browser.current_path).name or "/"
         idx = self.tabs.addTab(browser, name)
@@ -218,6 +230,8 @@ class MainWindow(QMainWindow):
              lambda: self.current_browser and self.current_browser._focus_addr()),
             (Qt.Key.Key_F4,
              lambda: self.current_browser and self.current_browser._focus_addr()),
+            (Qt.Key.Key_F9,    self._toggle_preview),
+            (Qt.Key.Key_Space, self._toggle_preview),
         ]
 
         if sys.platform == "darwin":
@@ -246,6 +260,21 @@ class MainWindow(QMainWindow):
         n = self.tabs.count()
         if n > 1:
             self.tabs.setCurrentIndex((self.tabs.currentIndex() - 1) % n)
+
+    def _toggle_preview(self):
+        """Schaltet den Vorschau-Drawer ein/aus (F9 / Space)."""
+        visible = not self.preview.isVisible()
+        self.preview.setVisible(visible)
+        s = QSettings(ORG_NAME, "MainWindow")
+        s.setValue(SK_PREVIEW_VISIBLE, visible)
+
+    def _on_selection_changed(self, path: str):
+        """Aktualisiert die Vorschau wenn sich die Auswahl ändert."""
+        if self.preview.isVisible():
+            if path:
+                self.preview.show_path(path)
+            else:
+                self.preview.clear_preview()
 
     def _build_menu(self):
         mb = self.menuBar()
@@ -323,8 +352,8 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         s = QSettings(ORG_NAME, "MainWindow")
-        s.setValue("geometry",  self.saveGeometry())
-        s.setValue("splitter",  self.splitter.saveState())
+        s.setValue("geometry",      self.saveGeometry())
+        s.setValue(SK_SPLITTER_MAIN, self.splitter.saveState())
         cur = self.current_browser
         if cur:
             s.setValue("last_path", cur.current_path)
