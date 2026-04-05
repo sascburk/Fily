@@ -1,0 +1,278 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # macOS → .dmg
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version aus Tag ermitteln
+        id: ver
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Abhängigkeiten installieren
+        run: pip install -r requirements.txt
+
+      - name: .app bauen
+        run: pyinstaller fily_app.spec
+
+      - name: create-dmg installieren
+        run: brew install create-dmg
+
+      - name: .dmg erstellen
+        run: |
+          create-dmg \
+            --volname "Fily" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "Fily.app" 175 190 \
+            --hide-extension "Fily.app" \
+            --app-drop-link 425 190 \
+            "Fily-${{ steps.ver.outputs.VERSION }}.dmg" \
+            "dist/Fily.app"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: "Fily-${{ steps.ver.outputs.VERSION }}.dmg"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Linux → .deb + .rpm
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version aus Tag ermitteln
+        id: ver
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: System-Abhängigkeiten installieren
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-dev \
+            libgl1-mesa-dev \
+            libxcb-xinerama0 \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-render-util0 \
+            ruby-full \
+            rpm
+
+      - name: Python-Abhängigkeiten installieren
+        run: pip install -r requirements.txt
+
+      - name: Binary bauen
+        run: pyinstaller fily_app.spec
+
+      - name: fpm installieren
+        run: sudo gem install fpm
+
+      - name: Paketstruktur vorbereiten
+        run: |
+          mkdir -p pkg/opt/Fily
+          mkdir -p pkg/usr/share/applications
+          mkdir -p pkg/usr/share/icons/hicolor/256x256/apps
+          mkdir -p pkg/usr/local/bin
+          cp -r dist/Fily/* pkg/opt/Fily/
+          # Desktop-Eintrag mit korrektem Pfad
+          sed 's|Exec=.*|Exec=/opt/Fily/Fily|' fily.desktop \
+            > pkg/usr/share/applications/fily.desktop
+          cp assets/icons/linux/256x256.png \
+            pkg/usr/share/icons/hicolor/256x256/apps/fily.png
+          # Symlink für Terminal-Aufruf (DEB)
+          ln -s /opt/Fily/Fily pkg/usr/local/bin/fily
+
+      - name: .deb erstellen
+        run: |
+          fpm -s dir -t deb \
+            -n fily \
+            -v ${{ steps.ver.outputs.VERSION }} \
+            --description "Fily — Moderner Dateimanager" \
+            --url "https://github.com/${{ github.repository }}" \
+            --maintainer "${{ github.repository_owner }}" \
+            --category "utils" \
+            --license "MIT" \
+            -C pkg \
+            opt usr
+          mv $(ls fily*.deb | head -1) "Fily-${{ steps.ver.outputs.VERSION }}.deb"
+
+      - name: RPM Post-Install-Skript erstellen
+        run: |
+          echo '#!/bin/bash
+          ln -sf /opt/Fily/Fily /usr/local/bin/fily' > rpm-post-install.sh
+
+      - name: .rpm erstellen
+        run: |
+          fpm -s dir -t rpm \
+            -n fily \
+            -v ${{ steps.ver.outputs.VERSION }} \
+            --description "Fily — Moderner Dateimanager" \
+            --url "https://github.com/${{ github.repository }}" \
+            --maintainer "${{ github.repository_owner }}" \
+            --category "utils" \
+            --license "MIT" \
+            --after-install rpm-post-install.sh \
+            -C pkg \
+            opt usr
+          mv $(ls fily*.rpm | head -1) "Fily-${{ steps.ver.outputs.VERSION }}.rpm"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb
+          path: "Fily-${{ steps.ver.outputs.VERSION }}.deb"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-rpm
+          path: "Fily-${{ steps.ver.outputs.VERSION }}.rpm"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Windows → .msi
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version aus Tag ermitteln
+        id: ver
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Abhängigkeiten installieren
+        run: pip install -r requirements.txt
+
+      - name: Binary bauen
+        run: pyinstaller fily_app.spec
+
+      - name: WiX Toolset installieren
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add WixToolset.UI.wixext/5.0.2
+
+      - name: WiX-Konfiguration erstellen
+        shell: pwsh
+        run: |
+          $version = "${{ steps.ver.outputs.VERSION }}"
+          @"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+               xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+            <Package Name="Fily"
+                     Manufacturer="Fily"
+                     Version="$version"
+                     UpgradeCode="F1C7E8A2-3D4B-4E5F-9A6B-7C8D9E0F1A2B"
+                     Language="1033">
+
+              <MajorUpgrade DowngradeErrorMessage="A newer version is already installed." />
+              <MediaTemplate EmbedCab="yes" />
+              <ui:WixUI Id="WixUI_Advanced" />
+              <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+              <Property Id="ApplicationFolderName" Value="Fily" />
+              <Property Id="WixAppFolder" Value="WixPerMachineFolder" />
+
+              <StandardDirectory Id="ProgramFiles6432Folder">
+                <Directory Id="APPLICATIONFOLDER" Name="Fily" />
+              </StandardDirectory>
+
+              <StandardDirectory Id="ProgramMenuFolder">
+                <Directory Id="FilyMenuDir" Name="Fily">
+                  <Component Id="FilyMenuShortcut">
+                    <Shortcut Id="AppStartMenuShortcut"
+                              Name="Fily"
+                              Description="Fily File Manager"
+                              Target="[APPLICATIONFOLDER]Fily.exe"
+                              WorkingDirectory="APPLICATIONFOLDER" />
+                    <RemoveFolder Id="CleanUpShortcut" On="uninstall" />
+                    <RegistryValue Root="HKCU"
+                                   Key="Software\Fily"
+                                   Name="installed"
+                                   Type="integer"
+                                   Value="1"
+                                   KeyPath="yes" />
+                  </Component>
+                </Directory>
+              </StandardDirectory>
+
+              <ComponentGroup Id="ProductFiles" Directory="APPLICATIONFOLDER">
+                <Files Include="dist\Fily\**" />
+              </ComponentGroup>
+
+              <Feature Id="Main" Title="Fily" Level="1">
+                <ComponentGroupRef Id="ProductFiles" />
+                <ComponentRef Id="FilyMenuShortcut" />
+              </Feature>
+
+            </Package>
+          </Wix>
+          "@ | Out-File -FilePath "fily.wxs" -Encoding UTF8
+
+      - name: .msi bauen
+        run: wix build fily.wxs -ext WixToolset.UI.wixext -o "Fily-${{ steps.ver.outputs.VERSION }}.msi"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-msi
+          path: "Fily-${{ steps.ver.outputs.VERSION }}.msi"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # GitHub Release erstellen
+  # ─────────────────────────────────────────────────────────────────────────────
+  release:
+    needs: [build-macos, build-linux, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Version aus Tag ermitteln
+        id: ver
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Alle Artefakte herunterladen
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: GitHub Release erstellen
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Fily v${{ steps.ver.outputs.VERSION }}"
+          generate_release_notes: true
+          files: |
+            Fily-${{ steps.ver.outputs.VERSION }}.dmg
+            Fily-${{ steps.ver.outputs.VERSION }}.deb
+            Fily-${{ steps.ver.outputs.VERSION }}.rpm
+            Fily-${{ steps.ver.outputs.VERSION }}.msi
