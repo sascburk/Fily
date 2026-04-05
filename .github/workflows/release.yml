@@ -103,7 +103,7 @@ jobs:
           mkdir -p pkg/usr/share/applications
           mkdir -p pkg/usr/share/icons/hicolor/256x256/apps
           mkdir -p pkg/usr/local/bin
-          cp -r dist/Fily/* pkg/opt/Fily/
+          cp dist/Fily pkg/opt/Fily/Fily
           # Desktop-Eintrag mit korrektem Pfad
           sed 's|Exec=.*|Exec=/opt/Fily/Fily|' fily.desktop \
             > pkg/usr/share/applications/fily.desktop
