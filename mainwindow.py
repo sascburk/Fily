@@ -356,8 +356,6 @@ class MainWindow(QMainWindow):
              lambda: self.current_browser and self.current_browser._focus_addr()),
             (Qt.Key.Key_F4,
              lambda: self.current_browser and self.current_browser._focus_addr()),
-            (Qt.Key.Key_F8,    self._toggle_split),
-            (Qt.Key.Key_F9,    self._toggle_preview),
             (Qt.Key.Key_Space, self._toggle_preview),
         ]
 
