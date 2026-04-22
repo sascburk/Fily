@@ -305,7 +305,8 @@ jobs:
               </StandardDirectory>
 
               <ComponentGroup Id="ProductFiles" Directory="APPLICATIONFOLDER">
-                <Files Include="dist\Fily\**" />
+                <Files Include="dist\Fily.exe" />
+                <Files Include="dist\_internal\**" Subdirectory="_internal" />
               </ComponentGroup>
 
               <Feature Id="Main" Title="Fily" Level="1">
