@@ -458,7 +458,7 @@ class MainWindow(QMainWindow):
         self._a(m_view, "Split-Pane",       "F8",            self._toggle_split)
         self._a(m_view, "Vorschau",         "F9",            self._toggle_preview)
         m_view.addSeparator()
-        self._a(m_view, "Versteckte Dateien", callback=lambda: self.current_browser and self.current_browser._toggle_hidden())
+        self._a(m_view, "Versteckte Dateien", "Ctrl+H", lambda: self.current_browser and self.current_browser._toggle_hidden())
 
         # ── Hilfe ─────────────────────────────────────────────────────────────
         m = mb.addMenu("Hilfe")
