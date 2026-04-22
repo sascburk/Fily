@@ -121,7 +121,7 @@ def _shortcut_table() -> list[tuple[str, str]]:
         ("", ""),
         ("Ansicht", ""),
         ("Aktualisieren",            "F5"),
-        ("Versteckte Dateien",       "Rechtsklick → Menü"),
+        ("Versteckte Dateien",       f"{cmd}+H"),
         ("", ""),
         ("Auswahl", ""),
         ("Alle auswählen",           f"{cmd}+A"),
