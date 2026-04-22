@@ -68,9 +68,9 @@ jobs:
           path: "Fily-${{ steps.ver.outputs.VERSION }}.dmg"
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Linux → .deb + .rpm
+  # Linux → .deb (Ubuntu)
   # ─────────────────────────────────────────────────────────────────────────────
-  build-linux:
+  build-deb:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -101,8 +101,7 @@ jobs:
             libxcb-image0 \
             libxcb-keysyms1 \
             libxcb-render-util0 \
-            ruby-full \
-            rpm
+            ruby-full
 
       - name: Python-Abhängigkeiten installieren
         run: pip install -r requirements.txt
@@ -120,12 +119,10 @@ jobs:
           mkdir -p pkg/usr/share/icons/hicolor/256x256/apps
           mkdir -p pkg/usr/local/bin
           cp dist/Fily pkg/opt/Fily/Fily
-          # Desktop-Eintrag mit korrektem Pfad
           sed 's|Exec=.*|Exec=/opt/Fily/Fily|' fily.desktop \
             > pkg/usr/share/applications/fily.desktop
           cp assets/icons/linux/256x256.png \
             pkg/usr/share/icons/hicolor/256x256/apps/fily.png
-          # Symlink für Terminal-Aufruf (DEB)
           ln -s /opt/Fily/Fily pkg/usr/local/bin/fily
 
       - name: .deb erstellen
@@ -142,7 +139,69 @@ jobs:
             opt usr
           mv $(ls fily*.deb | head -1) "Fily-${{ steps.ver.outputs.VERSION }}.deb"
 
-      - name: RPM Post-Install-Skript erstellen
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb
+          path: "Fily-${{ steps.ver.outputs.VERSION }}.deb"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Linux → .rpm (Fedora-Container für korrekte Qt-Libs / Darkmode)
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-rpm:
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version aus Tag ermitteln
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: System-Abhängigkeiten installieren
+        run: |
+          dnf install -y \
+            python3 \
+            python3-pip \
+            python3-devel \
+            mesa-libGL \
+            libxcb \
+            xcb-util-wm \
+            xcb-util-image \
+            xcb-util-keysyms \
+            xcb-util-renderutil \
+            xcb-util-cursor \
+            ruby \
+            ruby-devel \
+            gcc \
+            make \
+            rpm-build
+
+      - name: Python-Abhängigkeiten installieren
+        run: pip3 install --break-system-packages -r requirements.txt
+
+      - name: Binary bauen
+        run: python3 -m PyInstaller fily_app.spec
+
+      - name: fpm installieren
+        run: gem install fpm
+
+      - name: Paketstruktur vorbereiten
+        run: |
+          mkdir -p pkg/opt/Fily
+          mkdir -p pkg/usr/share/applications
+          mkdir -p pkg/usr/share/icons/hicolor/256x256/apps
+          cp dist/Fily pkg/opt/Fily/Fily
+          sed 's|Exec=.*|Exec=/opt/Fily/Fily|' fily.desktop \
+            > pkg/usr/share/applications/fily.desktop
+          cp assets/icons/linux/256x256.png \
+            pkg/usr/share/icons/hicolor/256x256/apps/fily.png
+
+      - name: Post-Install-Skript erstellen
         run: |
           echo '#!/bin/bash
           ln -sf /opt/Fily/Fily /usr/local/bin/fily' > rpm-post-install.sh
@@ -161,11 +220,6 @@ jobs:
             -C pkg \
             opt usr
           mv $(ls fily*.rpm | head -1) "Fily-${{ steps.ver.outputs.VERSION }}.rpm"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-deb
-          path: "Fily-${{ steps.ver.outputs.VERSION }}.deb"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -275,18 +329,13 @@ jobs:
   # GitHub Release erstellen
   # ─────────────────────────────────────────────────────────────────────────────
   release:
-    needs: [build-macos, build-linux, build-windows]
+    needs: [build-macos, build-deb, build-rpm, build-windows]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - name: Version aus Tag ermitteln
         id: ver
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "VERSION=${{ inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
-          fi
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
       - name: Alle Artefakte herunterladen
         uses: actions/download-artifact@v4
