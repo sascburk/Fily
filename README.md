@@ -303,6 +303,9 @@ Full list available in the app under **Help → Keyboard Shortcuts**.
 | Next tab | Cmd+Shift+→ | Ctrl+Tab |
 | Previous tab | Cmd+Shift+← | Ctrl+Shift+Tab |
 | Refresh | F5 | F5 |
+| Toggle hidden files | Cmd+H | Ctrl+H |
+| Split-Pane (Dual-Pane) | F8 | F8 |
+| Preview panel | F9 / Space | F9 / Space |
 | Select all | Cmd+A | Ctrl+A |
 | Cycle items | Tab / Shift+Tab | Tab / Shift+Tab |
 | Copy | Cmd+C | Ctrl+C |
