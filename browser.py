@@ -806,7 +806,7 @@ class FileBrowser(QWidget):
             a_ref = menu.addAction("Aktualisieren\tF5")
             a_ref.triggered.connect(self.refresh)
             menu.addSeparator()
-            a_hidden = menu.addAction("Versteckte Dateien anzeigen")
+            a_hidden = menu.addAction("Versteckte Dateien anzeigen\tCtrl+H")
             a_hidden.setCheckable(True)
             a_hidden.setChecked(bool(self.model.filter() & QDir.Filter.Hidden))
             a_hidden.triggered.connect(self._toggle_hidden)
