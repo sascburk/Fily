@@ -80,7 +80,11 @@ def _windows_send_to_recycle_bin(path: str) -> bool:
 
 
 def _linux_send_to_trash(path: str) -> bool:
-    """Fallback für Linux gemäß Freedesktop-Trash-Spezifikation."""
+    """Linux: Datei/Ordner in den XDG-Heim-Papierkorb (~/.local/share/Trash).
+
+    Immer derselbe Ort wie die meisten Dateimanager unter ~/.local/share/Trash/files
+    erwarten — unabhängig von GIO/Python-send2trash.
+    """
     if not sys.platform.startswith("linux"):
         return False
 
@@ -112,7 +116,7 @@ def _linux_send_to_trash(path: str) -> bool:
     try:
         shutil.move(str(src), str(dst))
         info_path.write_text(info_content, encoding="utf-8")
-        log_line(f"Linux fallback moved '{src}' -> '{dst}', info='{info_path}'")
+        log_line(f"Linux manual XDG moved '{src}' -> '{dst}', info='{info_path}'")
         return True
     except Exception as e:
         log_line(f"Linux fallback exception while moving '{src}' -> '{dst}': {e!r}")
@@ -129,6 +133,17 @@ def _linux_send_to_trash(path: str) -> bool:
         return False
 
 
+def _linux_home_trash_contains_name(name: str) -> bool:
+    """True, wenn unter ~/.local/share/Trash/files ein passender Eintrag liegt."""
+    d = Path.home() / ".local" / "share" / "Trash" / "files"
+    if not d.is_dir():
+        return False
+    for p in d.iterdir():
+        if p.name == name or p.name.startswith(f"{name}."):
+            return True
+    return False
+
+
 def safe_trash(path: str, parent=None) -> bool:
     """Legt eine Datei/Ordner in den Papierkorb.
 
@@ -143,15 +158,30 @@ def safe_trash(path: str, parent=None) -> bool:
         True wenn gelöscht (Papierkorb oder permanent), False wenn abgebrochen.
     """
     log_line_force(f"trash request: path='{path}' platform='{sys.platform}'")
-    # Linux: Paket-Default ist GIO (plat_gio). Gio.File.trash() kann ohne Fehler durchlaufen,
-    # ohne dass die Dateien unter ~/.local/share/Trash/files erscheinen (Desktop-Papierkorb leer).
-    # Freedesktop-Implementierung (plat_other) legt zuverlässig im XDG-Papierkorb ab.
+    # Linux: zuerst Heim-XDG-Papierkorb; dann plat_other (ggf. .Trash-<uid> auf demselben Mount);
+    # danach GIO aus dem send2trash-Paket.
     if sys.platform.startswith("linux"):
+        name = Path(path).name
+        if _linux_send_to_trash(path):
+            log_line(f"Linux manual XDG (home trash) succeeded for '{path}'")
+            if _linux_home_trash_contains_name(name):
+                log_line(f"Linux verify: '{name}' found under ~/.local/share/Trash/files")
+            else:
+                log_line_force(f"Linux verify: '{name}' NOT found under ~/.local/share/Trash/files (unexpected)")
+            return True
+        log_line(f"Linux manual XDG failed for '{path}', trying plat_other")
         try:
             from send2trash.plat_other import send2trash as _trash_freedesktop
 
             _trash_freedesktop(path)
-            log_line(f"Linux trash via plat_other (XDG) succeeded for '{path}'")
+            log_line(f"Linux plat_other finished for '{path}'")
+            if _linux_home_trash_contains_name(name):
+                log_line(f"Linux verify: '{name}' found under ~/.local/share/Trash/files")
+            else:
+                log_line_force(
+                    f"Linux verify: '{name}' not under home Trash/files — "
+                    f"may be in volume .Trash-* (same device as source); check mount root."
+                )
             return True
         except Exception as e:
             log_line(f"Linux plat_other trash failed for '{path}': {e!r}")
@@ -166,7 +196,7 @@ def safe_trash(path: str, parent=None) -> bool:
             log_line(f"Windows trash fallback succeeded for '{path}'")
             return True
         if _linux_send_to_trash(path):
-            log_line(f"Linux trash fallback succeeded for '{path}'")
+            log_line(f"Linux manual XDG retry succeeded for '{path}'")
             return True
         # Papierkorb nicht verfügbar — User fragen ob permanent löschen
         reply = QMessageBox.warning(
