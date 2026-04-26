@@ -44,6 +44,7 @@ SK_LAST_PATH       = "last_path"
 SK_SHOW_HIDDEN     = "show_hidden"
 SK_FOLDERS_TOP     = "folders_always_top"
 SK_FDA_HINT        = "fda_hint_shown"
+SK_FDA_FIRST_LAUNCH_DONE = "fda_first_launch_intro_done"
 SK_FAV_BG_COLOR    = "favorites/bg_color"
 SK_FAV_TRASH_REMOVED = "favorites/trash_removed"
 

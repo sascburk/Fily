@@ -967,6 +967,14 @@ class FileBrowser(QWidget):
         hdr = self.tree.header()
         self.tree.sortByColumn(hdr.sortIndicatorSection(), hdr.sortIndicatorOrder())
 
+    def sort_by_modified_date(self, newest_first: bool = True):
+        """Sortiert nach Änderungsdatum (wirkt auf Liste und Icon-Ansicht)."""
+        order = (
+            Qt.SortOrder.DescendingOrder if newest_first
+            else Qt.SortOrder.AscendingOrder
+        )
+        self.tree.sortByColumn(1, order)
+
     def _properties(self, path: str):
         fi = QFileInfo(path)
         lines = [

@@ -664,7 +664,8 @@ class MainWindow(QMainWindow):
 
     # ── Fensterkürzel (Tab-Navigation) ────────────────────────────────────────
     def _install_window_shortcuts(self):
-        # Ctrl+T / Ctrl+W werden nur über Menü-Aktionen definiert (kein QShortcut — sonst ambiguous)
+        # Menü-Aktionen tragen die globalen Shortcuts (z. B. Ctrl/Cmd+T/W/N/Backspace),
+        # hier nur reine Window-Fokuskürzel definieren.
         win_pairs = [
             # Fokus-Shortcuts (wirken auch wenn Favoritenleiste den Fokus hat)
             (Qt.Modifier.CTRL | Qt.Key.Key_F,
@@ -675,33 +676,6 @@ class MainWindow(QMainWindow):
              lambda: self.current_browser and self.current_browser._focus_addr()),
             (Qt.Key.Key_Space, self._toggle_preview),
         ]
-        if sys.platform == "darwin":
-            win_pairs.append((
-                QKeySequence("Ctrl+Shift+N"),
-                lambda: self.current_browser and self.current_browser._new_file(),
-            ))
-            win_pairs.append((
-                QKeySequence("Ctrl+Backspace"),
-                lambda: self.current_browser and self.current_browser._delete(),
-            ))
-            win_pairs.append((
-                QKeySequence("Ctrl+H"),
-                self._toggle_show_hidden,
-            ))
-        else:
-            win_pairs.append((
-                QKeySequence("Ctrl+Shift+N"),
-                lambda: self.current_browser and self.current_browser._new_file(),
-            ))
-            win_pairs.append((
-                QKeySequence("Ctrl+Backspace"),
-                lambda: self.current_browser and self.current_browser._delete(),
-            ))
-            win_pairs.append((
-                QKeySequence("Ctrl+H"),
-                self._toggle_show_hidden,
-            ))
-
         if sys.platform == "darwin":
             # macOS: Cmd+Shift+←/→ via App-Event-Filter
             # (System schluckt Ctrl+Tab auf Systemebene)
@@ -770,9 +744,8 @@ class MainWindow(QMainWindow):
         # ── Datei ─────────────────────────────────────────────────────────────
         m = mb.addMenu("Datei")
         self._a(m, "Neuer Ordner",  "Ctrl+N",  lambda: self.current_browser and self.current_browser._new_folder())
-        # Shortcut läuft über QShortcut in _install_window_shortcuts (zuverlässig mit Fokus in Liste/Favoriten).
-        _nf_hint = "Cmd+Shift+N" if sys.platform == "darwin" else "Ctrl+Shift+N"
-        self._a(m, f"Neue Datei\t{_nf_hint}", "", lambda: self.current_browser and self.current_browser._new_file())
+        new_file_action = self._a(m, "Neue Datei", "", lambda: self.current_browser and self.current_browser._new_file())
+        new_file_action.setShortcut(QKeySequence("Ctrl+Shift+N"))
         self._a(m, "Neuer Tab",     "Ctrl+T",  self._new_tab)
         self._a(m, "Tab schließen", "Ctrl+W",  lambda: self._close_tab(self.tabs.currentIndex()))
         m.addSeparator()
@@ -792,11 +765,11 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         self._a(m, "Umbenennen",           "F2",      lambda: self.current_browser and self.current_browser._rename())
         self._a(m, "Mehrfach umbenennen",  "",        lambda: self.current_browser and self.current_browser._batch_rename())
+        trash_action = self._a(m, "In Papierkorb", "", lambda: self.current_browser and self.current_browser._delete())
         if sys.platform == "darwin":
-            self._a(m, "In Papierkorb\tCmd+Backspace", "", lambda: self.current_browser and self.current_browser._delete())
+            trash_action.setShortcut(QKeySequence("Ctrl+Backspace"))
         else:
-            trash_action = self._a(m, "In Papierkorb\tDelete  ·  Ctrl+Backspace", "", lambda: self.current_browser and self.current_browser._delete())
-            trash_action.setShortcut(QKeySequence("Delete"))
+            trash_action.setShortcuts([QKeySequence("Delete"), QKeySequence("Ctrl+Backspace")])
         m.addSeparator()
         self._a(m, "Rückgängig",           "Ctrl+Z",  lambda: self.current_browser and self.current_browser._undo())
 
@@ -805,17 +778,29 @@ class MainWindow(QMainWindow):
         self._a(m_view, "Aktualisieren",    "F5",            lambda: self.current_browser and self.current_browser.refresh())
         self._a(m_view, "Liste",            "Ctrl+Shift+L",  lambda: self._set_view("list"))
         self._a(m_view, "Icon-Raster",      "Ctrl+Shift+I",  lambda: self._set_view("icon"))
+        m_sort = m_view.addMenu("Sortieren nach")
+        self._a(
+            m_sort,
+            "Änderungsdatum (neu zuerst)",
+            callback=lambda: self.current_browser and self.current_browser.sort_by_modified_date(True),
+        )
+        self._a(
+            m_sort,
+            "Änderungsdatum (alt zuerst)",
+            callback=lambda: self.current_browser and self.current_browser.sort_by_modified_date(False),
+        )
         m_view.addSeparator()
         self._a(m_view, "Split-Pane",       "F8",            self._toggle_split)
         self._a(m_view, "Vorschau",         "F9",            self._toggle_preview)
         m_view.addSeparator()
-        _hidden_hint = "Cmd+Shift+H" if sys.platform == "darwin" else "Ctrl+H"
+        _hidden_sc = QKeySequence("Ctrl+Shift+H") if sys.platform == "darwin" else QKeySequence("Ctrl+H")
         self._a_show_hidden = self._a(
             m_view,
-            f"Versteckte Dateien\t{_hidden_hint}",
+            "Versteckte Dateien",
             "",
             self._set_show_hidden,
         )
+        self._a_show_hidden.setShortcut(_hidden_sc)
         self._a_show_hidden.setCheckable(True)
         self._a_show_hidden.setChecked(False)
         self._a_folders_top = self._a(m_view, "Ordner immer oben")

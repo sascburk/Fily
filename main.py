@@ -12,10 +12,10 @@ from pathlib import Path
 import traceback
 
 from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QIcon, QColor, QPalette
 
-from config import APP_NAME, ORG_NAME, SK_FDA_HINT, asset_path
+from config import APP_NAME, ORG_NAME, SK_FDA_HINT, SK_FDA_FIRST_LAUNCH_DONE, asset_path
 from mainwindow import MainWindow
 from logger import log_line
 
@@ -112,6 +112,39 @@ def _apply_dark_palette(app: QApplication) -> None:
     p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, light)
     p.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text,       light)
     app.setPalette(p)
+
+
+def _macos_show_fda_first_launch_dialog(parent=None) -> None:
+    """Einmaliger Hinweis beim ersten Start: Full Disk Access (macOS).
+
+    macOS erlaubt keine programmatische Rechte-Anfrage; nur Wegweisung zu den
+    Systemeinstellungen. Nach Anzeige wird nicht erneut gestört.
+    """
+    s = QSettings(ORG_NAME, "Permissions")
+    if s.value(SK_FDA_FIRST_LAUNCH_DONE, False, type=bool):
+        return
+
+    dlg = QMessageBox(parent)
+    dlg.setWindowTitle("Vollzugriff auf Dateien (macOS)")
+    dlg.setIcon(QMessageBox.Icon.Information)
+    dlg.setText(
+        "<b>Willkommen bei Fily!</b><br><br>"
+        "Ohne <i>Vollzugriff auf Dateien</i> kann macOS den Zugriff auf manche "
+        "Ordner einschränken (z. B. Desktop, Dokumente, Downloads, externe Laufwerke).<br><br>"
+        "Wenn du dort arbeiten möchtest, aktiviere Fily unter:<br>"
+        "<i>Systemeinstellungen → Datenschutz &amp; Sicherheit → "
+        "Vollzugriff auf Dateien</i>"
+    )
+    btn_settings = dlg.addButton("Zu Einstellungen", QMessageBox.ButtonRole.ActionRole)
+    dlg.addButton("Später", QMessageBox.ButtonRole.RejectRole)
+    dlg.exec()
+    s.setValue(SK_FDA_FIRST_LAUNCH_DONE, True)
+    if dlg.clickedButton() == btn_settings:
+        subprocess.run([
+            "open",
+            "x-apple.systempreferences:"
+            "com.apple.preference.security?Privacy_AllFiles",
+        ])
 
 
 def _macos_show_fda_dialog(parent=None) -> None:
@@ -245,6 +278,8 @@ def main():
 
     window = MainWindow()
     window.show()
+    if sys.platform == "darwin":
+        QTimer.singleShot(300, lambda: _macos_show_fda_first_launch_dialog(window))
     sys.exit(app.exec())
 
 
