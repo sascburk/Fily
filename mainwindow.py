@@ -711,6 +711,8 @@ class MainWindow(QMainWindow):
         # ── Datei ─────────────────────────────────────────────────────────────
         m = mb.addMenu("Datei")
         self._a(m, "Neuer Ordner",  "Ctrl+N",  lambda: self.current_browser and self.current_browser._new_folder())
+        new_file_sc = "Meta+Shift+N" if sys.platform == "darwin" else "Ctrl+Shift+N"
+        self._a(m, "Neue Datei", new_file_sc, lambda: self.current_browser and self.current_browser._new_file())
         self._a(m, "Neuer Tab",     "Ctrl+T",  self._new_tab)
         self._a(m, "Tab schließen", "Ctrl+W",  lambda: self._close_tab(self.tabs.currentIndex()))
         m.addSeparator()
@@ -730,8 +732,11 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         self._a(m, "Umbenennen",           "F2",      lambda: self.current_browser and self.current_browser._rename())
         self._a(m, "Mehrfach umbenennen",  "",        lambda: self.current_browser and self.current_browser._batch_rename())
-        trash_sc = "Ctrl+Backspace" if sys.platform == "darwin" else "Delete"
-        self._a(m, "In Papierkorb", trash_sc, lambda: self.current_browser and self.current_browser._delete())
+        trash_action = self._a(m, "In Papierkorb", callback=lambda: self.current_browser and self.current_browser._delete())
+        if sys.platform == "darwin":
+            trash_action.setShortcut("Ctrl+Backspace")
+        else:
+            trash_action.setShortcuts([QKeySequence("Delete"), QKeySequence("Ctrl+Backspace")])
         m.addSeparator()
         self._a(m, "Rückgängig",           "Ctrl+Z",  lambda: self.current_browser and self.current_browser._undo())
 

@@ -293,6 +293,12 @@ class FileBrowser(QWidget):
             sc_new.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
             sc_new.activated.connect(self._open_sel_in_new_tab)
 
+        # Zusätzlich zu Del: Ctrl+Backspace für Löschen unter Linux/Windows.
+        if not sys.platform.startswith("darwin"):
+            sc_del = QShortcut(QKeySequence("Ctrl+Backspace"), self)
+            sc_del.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            sc_del.activated.connect(self._delete)
+
     # ── Navigation ────────────────────────────────────────────────────────────
     def navigate(self, path: str):
         path = str(Path(path).resolve())
@@ -775,6 +781,22 @@ class FileBrowser(QWidget):
                 self.refresh()
             except OSError as e:
                 QMessageBox.warning(self, "Fehler", f"Ordner konnte nicht erstellt werden:\n{e}")
+
+    def _new_file(self):
+        name, ok = QInputDialog.getText(
+            self, "Neue Datei", "Dateiname:", text="Neue Datei.txt"
+        )
+        if not ok or not name:
+            return
+        path = os.path.join(self._cur, name)
+        if os.path.exists(path):
+            QMessageBox.warning(self, "Fehler", f"Datei existiert bereits:\n{path}")
+            return
+        try:
+            Path(path).touch(exist_ok=False)
+            self.refresh()
+        except OSError as e:
+            QMessageBox.warning(self, "Fehler", f"Datei konnte nicht erstellt werden:\n{e}")
 
     # ── Suche (Groß-/Kleinschreibung ignorieren) ──────────────────────────────
     def _on_search(self, text: str):
