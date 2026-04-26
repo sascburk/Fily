@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QSplitter, QTabWidget, QTabBar,
     QToolButton, QMenu, QApplication,
 )
-from PySide6.QtCore import Qt, QSettings, Signal, QPoint, QUrl, QTimer, QRectF
+from PySide6.QtCore import Qt, QSettings, Signal, QPoint, QUrl, QTimer, QRectF, QEvent
 from PySide6.QtGui import QAction, QKeySequence, QDesktopServices, QShortcut, QRegion, QPainterPath
 
 from config import (
@@ -273,6 +273,19 @@ class MainWindow(QMainWindow):
         super().resizeEvent(event)
         if self._custom_chrome:
             self._update_window_mask()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if sys.platform.startswith("linux"):
+            self.menuBar().setNativeMenuBar(False)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if (
+            sys.platform.startswith("linux")
+            and event.type() == QEvent.Type.WindowActivate
+        ):
+            self.menuBar().setNativeMenuBar(False)
 
     def _make_tab_widget(self) -> QTabWidget:
         """Erstellt ein konfiguriertes QTabWidget mit TearOffTabBar."""

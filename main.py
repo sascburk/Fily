@@ -157,6 +157,15 @@ def main():
     # Linux: Umgebung vor QApplication vorbereiten.
     _linux_dark = False
     if sys.platform.startswith("linux"):
+        # Qt-Wayland: Menüleiste oft nur beim ersten Klick korrekt, danach
+        # „Release“ löst ersten Eintrag aus. XWayland (xcb) ist der stabile Workaround.
+        # Opt-out: FILLY_USE_WAYLAND=1  oder  QT_QPA_PLATFORM=wayland explizit setzen.
+        _wl = bool(os.environ.get("WAYLAND_DISPLAY"))
+        _want_wl = os.environ.get("FILLY_USE_WAYLAND", "").lower() in ("1", "true", "yes")
+        _qpa = os.environ.get("QT_QPA_PLATFORM", "").strip().lower()
+        if _wl and not _want_wl and _qpa in ("", "wayland"):
+            os.environ["QT_QPA_PLATFORM"] = "xcb"
+
         # Ubuntu: disable global AppMenu integration — prevents menu bar from
         # disappearing immediately after click (BAMF/Unity proxy hijacks Qt menus).
         os.environ["UBUNTU_MENUPROXY"] = "0"
