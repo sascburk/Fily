@@ -167,14 +167,16 @@ def main():
         # von der Desktop-Session geerbt wird.
         os.environ["GTK_MODULES"] = ""
 
-        # Unterdrücke Qt-D-Bus-Portal-Warnung "Could not register app ID"
-        # — tritt auf wenn die App via Symlink gestartet wird und die D-Bus-
-        # Verbindung bereits eine App-ID hat; die App funktioniert trotzdem.
+        # Qt-Logging: harmlose Meldungen unterdrücken (Portal, Wayland-TextInput).
         _existing_rules = os.environ.get("QT_LOGGING_RULES", "")
-        _portal_rule = "qt.qpa.services=false"
-        if _portal_rule not in _existing_rules:
+        _qt_log_parts: list[str] = []
+        for _rule in ("qt.qpa.services=false", "qt.qpa.wayland.textinput=false"):
+            if _rule not in _existing_rules:
+                _qt_log_parts.append(_rule)
+        if _qt_log_parts:
+            _merged = ";".join(_qt_log_parts)
             os.environ["QT_LOGGING_RULES"] = (
-                f"{_existing_rules};{_portal_rule}" if _existing_rules else _portal_rule
+                f"{_existing_rules};{_merged}" if _existing_rules else _merged
             )
 
         # Dark-Mode-Erkennung VOR QApplication, damit QT_STYLE_OVERRIDE greift
