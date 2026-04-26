@@ -53,6 +53,9 @@ class FileBrowser(QWidget):
     request_add_fav   = Signal(str)
     request_new_tab   = Signal()
     request_open_path_in_new_tab = Signal(str)
+    request_window_drag_start = Signal(object)
+    request_window_drag_move = Signal(object)
+    request_window_drag_end = Signal()
     selection_changed = Signal(str)   # Pfad des ausgewählten Elements oder ""
 
     def __init__(self, start_path: str | None = None, parent=None):
@@ -79,6 +82,9 @@ class FileBrowser(QWidget):
         self._install_shortcuts()
         self.navigate(start_path or str(Path.home()))
 
+    def set_window_drag_enabled(self, enabled: bool):
+        self.toolbar.set_drag_area_enabled(enabled)
+
     # ── UI-Aufbau ─────────────────────────────────────────────────────────────
     def _build_ui(self):
         root = QVBoxLayout(self)
@@ -94,6 +100,9 @@ class FileBrowser(QWidget):
         self.toolbar.new_folder_clicked.connect(self._new_folder)
         self.toolbar.view_toggle.connect(self._toggle_view_mode)
         self.toolbar.new_tab_clicked.connect(self.request_new_tab.emit)
+        self.toolbar.window_drag_start.connect(self.request_window_drag_start.emit)
+        self.toolbar.window_drag_move.connect(self.request_window_drag_move.emit)
+        self.toolbar.window_drag_end.connect(self.request_window_drag_end.emit)
         root.addWidget(self.toolbar)
 
         # Kompatibilitäts-Aliase: _update_nav_btns() referenziert btn_back/btn_forward

@@ -11,8 +11,8 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QSplitter, QTabWidget, QTabBar,
     QToolButton, QMenu, QApplication,
 )
-from PySide6.QtCore import Qt, QSettings, Signal, QPoint, QUrl, QTimer
-from PySide6.QtGui import QAction, QKeySequence, QDesktopServices, QShortcut
+from PySide6.QtCore import Qt, QSettings, Signal, QPoint, QUrl, QTimer, QRectF
+from PySide6.QtGui import QAction, QKeySequence, QDesktopServices, QShortcut, QRegion, QPainterPath
 
 from config import (
     APP_NAME, ORG_NAME, BUYMEACOFFEE_URL, GITHUB_URL,
@@ -116,20 +116,41 @@ class TearOffTabBar(QTabBar):
 class MainWindow(QMainWindow):
     def __init__(self, _initial_browser=None):
         super().__init__()
+        self._corner_radius = 12
+        self._custom_chrome = (sys.platform == "darwin")
+        if self._custom_chrome:
+            self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self._initial_browser = _initial_browser
+        self._win_drag_active = False
+        self._win_drag_offset = QPoint(0, 0)
         self.setWindowTitle(APP_NAME)
         self.setMinimumSize(700, 440)
 
         self._build_ui()
         self._build_menu()
         self._install_window_shortcuts()
+        if self._custom_chrome:
+            QTimer.singleShot(0, self._update_window_mask)
 
     # ── UI ────────────────────────────────────────────────────────────────────
     def _build_ui(self):
         center = QWidget()
+        center.setObjectName("windowFrame")
+        if self._custom_chrome:
+            center.setStyleSheet(
+                "QWidget#windowFrame {"
+                " background: palette(window);"
+                " border: 1px solid palette(mid);"
+                " border-radius: 12px;"
+                "}"
+            )
         self.setCentralWidget(center)
         main_layout = QHBoxLayout(center)
-        main_layout.setContentsMargins(0, 0, 0, 0)
+        if self._custom_chrome:
+            main_layout.setContentsMargins(1, 1, 1, 1)
+        else:
+            main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
         # ── Haupt-Splitter: Favoriten | Browser-Bereich | Vorschau ───────────────
@@ -137,6 +158,14 @@ class MainWindow(QMainWindow):
         self.splitter.setHandleWidth(1)
 
         self.fav_panel = FavoritesPanel()
+        self.fav_panel.set_window_controls_visible(self._custom_chrome)
+        if self._custom_chrome:
+            self.fav_panel.window_close.connect(self.close)
+            self.fav_panel.window_minimize.connect(self.showMinimized)
+            self.fav_panel.window_maximize_toggle.connect(self._toggle_maximize_restore)
+            self.fav_panel.window_drag_start.connect(self._window_drag_start)
+            self.fav_panel.window_drag_move.connect(self._window_drag_move)
+            self.fav_panel.window_drag_end.connect(self._window_drag_end)
 
         # ── Browser-Bereich: linke + rechte Tab-Gruppe (Dual-Pane) ───────────────
         self._browser_container = QWidget()
@@ -203,6 +232,48 @@ class MainWindow(QMainWindow):
 
         main_layout.addWidget(self.splitter)
 
+    def _toggle_maximize_restore(self):
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+        if self._custom_chrome:
+            QTimer.singleShot(0, self._update_window_mask)
+
+    def _window_drag_start(self, global_pos):
+        if not self._custom_chrome:
+            return
+        if self.isMaximized():
+            self.showNormal()
+            QTimer.singleShot(0, self._update_window_mask)
+        self._win_drag_active = True
+        self._win_drag_offset = global_pos - self.frameGeometry().topLeft()
+
+    def _window_drag_move(self, global_pos):
+        if not self._custom_chrome or not self._win_drag_active:
+            return
+        self.move(global_pos - self._win_drag_offset)
+
+    def _window_drag_end(self):
+        self._win_drag_active = False
+
+    def _update_window_mask(self):
+        if not self._custom_chrome:
+            return
+        if self.isMaximized():
+            self.clearMask()
+            return
+        rr = QRectF(self.rect())
+        path = QPainterPath()
+        path.addRoundedRect(rr, self._corner_radius, self._corner_radius)
+        region = QRegion(path.toFillPolygon().toPolygon())
+        self.setMask(region)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._custom_chrome:
+            self._update_window_mask()
+
     def _make_tab_widget(self) -> QTabWidget:
         """Erstellt ein konfiguriertes QTabWidget mit TearOffTabBar."""
         tw = QTabWidget()
@@ -241,10 +312,15 @@ class MainWindow(QMainWindow):
         """Fügt einen neuen Tab hinzu und gibt den Browser zurück."""
         tw = tab_widget or self.tabs
         browser = FileBrowser(path)
+        browser.set_window_drag_enabled(self._custom_chrome)
         browser.path_changed.connect(self._path_changed)
         browser.request_add_fav.connect(self.fav_panel.add_current)
         browser.request_new_tab.connect(lambda t=tw: self._new_tab(t))
         browser.request_open_path_in_new_tab.connect(lambda p, t=tw: self._add_tab(p, t))
+        if self._custom_chrome:
+            browser.request_window_drag_start.connect(self._window_drag_start)
+            browser.request_window_drag_move.connect(self._window_drag_move)
+            browser.request_window_drag_end.connect(self._window_drag_end)
         browser.selection_changed.connect(self._on_selection_changed)
         name = Path(path).name if path else "Home"
         idx = tw.addTab(browser, name or "/")
@@ -256,10 +332,15 @@ class MainWindow(QMainWindow):
     def _add_existing_tab(self, browser: "FileBrowser", tab_widget: QTabWidget | None = None):
         """Nimmt einen bestehenden Browser-Widget auf (z. B. nach Tear-Off)."""
         tw = tab_widget or self.tabs
+        browser.set_window_drag_enabled(self._custom_chrome)
         browser.path_changed.connect(self._path_changed)
         browser.request_add_fav.connect(self.fav_panel.add_current)
         browser.request_new_tab.connect(lambda t=tw: self._new_tab(t))
         browser.request_open_path_in_new_tab.connect(lambda p, t=tw: self._add_tab(p, t))
+        if self._custom_chrome:
+            browser.request_window_drag_start.connect(self._window_drag_start)
+            browser.request_window_drag_move.connect(self._window_drag_move)
+            browser.request_window_drag_end.connect(self._window_drag_end)
         browser.selection_changed.connect(self._on_selection_changed)
         name = Path(browser.current_path).name or "/"
         idx = tw.addTab(browser, name)
@@ -284,6 +365,10 @@ class MainWindow(QMainWindow):
             browser.request_add_fav.disconnect(self.fav_panel.add_current)
             browser.request_new_tab.disconnect()
             browser.request_open_path_in_new_tab.disconnect()
+            if self._custom_chrome:
+                browser.request_window_drag_start.disconnect(self._window_drag_start)
+                browser.request_window_drag_move.disconnect(self._window_drag_move)
+                browser.request_window_drag_end.disconnect(self._window_drag_end)
             browser.selection_changed.disconnect(self._on_selection_changed)
         except (RuntimeError, TypeError):
             pass
@@ -357,6 +442,10 @@ class MainWindow(QMainWindow):
             browser.request_add_fav.disconnect(self.fav_panel.add_current)
             browser.request_new_tab.disconnect()
             browser.request_open_path_in_new_tab.disconnect()
+            if self._custom_chrome:
+                browser.request_window_drag_start.disconnect(self._window_drag_start)
+                browser.request_window_drag_move.disconnect(self._window_drag_move)
+                browser.request_window_drag_end.disconnect(self._window_drag_end)
             browser.selection_changed.disconnect(self._on_selection_changed)
         except (RuntimeError, TypeError):
             pass
@@ -399,9 +488,15 @@ class MainWindow(QMainWindow):
     ) -> int:
         """Nimmt einen bestehenden Browser-Widget auf und gibt den Index zurück."""
         tw = tab_widget
+        browser.set_window_drag_enabled(self._custom_chrome)
         browser.path_changed.connect(self._path_changed)
         browser.request_add_fav.connect(self.fav_panel.add_current)
         browser.request_new_tab.connect(lambda t=tw: self._new_tab(t))
+        browser.request_open_path_in_new_tab.connect(lambda p, t=tw: self._add_tab(p, t))
+        if self._custom_chrome:
+            browser.request_window_drag_start.connect(self._window_drag_start)
+            browser.request_window_drag_move.connect(self._window_drag_move)
+            browser.request_window_drag_end.connect(self._window_drag_end)
         browser.selection_changed.connect(self._on_selection_changed)
         name = Path(browser.current_path).name or "/"
         if insert_idx is None or insert_idx < 0 or insert_idx > tw.count():

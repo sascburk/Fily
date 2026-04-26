@@ -5,7 +5,7 @@ Schaltflächen: Zurück | Vor | Hoch | Aktualisieren | Neuer Ordner | Ansicht we
 Die Toolbar ist kompakt (28×28 px Icons) und hat keine Text-Labels.
 """
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QToolButton, QSizePolicy, QApplication, QStyle
-from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtCore import Qt, Signal, QSize, QEvent
 from PySide6.QtGui import QIcon
 
 
@@ -28,9 +28,13 @@ class BrowserToolbar(QWidget):
     new_folder_clicked = Signal()
     view_toggle        = Signal()   # Liste ↔ Icon-Raster
     new_tab_clicked    = Signal()
+    window_drag_start  = Signal(object)  # global QPoint
+    window_drag_move   = Signal(object)  # global QPoint
+    window_drag_end    = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._drag_area_enabled = True
         self.setFixedHeight(38)
 
         layout = QHBoxLayout(self)
@@ -65,8 +69,16 @@ class BrowserToolbar(QWidget):
                     self.btn_reload, self.btn_new_dir, self.btn_view):
             layout.addWidget(btn)
 
-        layout.addStretch(1)
+        self._drag_area = QWidget()
+        self._drag_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self._drag_area.setCursor(Qt.CursorShape.OpenHandCursor)
+        self._drag_area.installEventFilter(self)
+        layout.addWidget(self._drag_area, 1)
         layout.addWidget(self.btn_new_tab)
+
+    def set_drag_area_enabled(self, enabled: bool):
+        self._drag_area_enabled = bool(enabled)
+        self._drag_area.setVisible(self._drag_area_enabled)
 
     def _btn(self, tip: str, std_icon) -> QToolButton:
         """Erstellt einen kompakten Icon-Button mit Qt-Standard-Icon."""
@@ -77,3 +89,20 @@ class BrowserToolbar(QWidget):
         btn.setIconSize(QSize(18, 18))
         btn.setIcon(QApplication.style().standardIcon(std_icon))
         return btn
+
+    def eventFilter(self, obj, event):
+        if obj is getattr(self, "_drag_area", None):
+            if not self._drag_area_enabled:
+                return False
+            if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+                self._drag_area.setCursor(Qt.CursorShape.ClosedHandCursor)
+                self.window_drag_start.emit(event.globalPosition().toPoint())
+                return True
+            if event.type() == QEvent.Type.MouseMove and (event.buttons() & Qt.MouseButton.LeftButton):
+                self.window_drag_move.emit(event.globalPosition().toPoint())
+                return True
+            if event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
+                self._drag_area.setCursor(Qt.CursorShape.OpenHandCursor)
+                self.window_drag_end.emit()
+                return True
+        return super().eventFilter(obj, event)
