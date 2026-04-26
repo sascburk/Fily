@@ -11,13 +11,13 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QSplitter, QTabWidget, QTabBar,
     QToolButton, QMenu, QApplication,
 )
-from PySide6.QtCore import Qt, QSettings, Signal, QPoint, QUrl, QEvent
+from PySide6.QtCore import Qt, QSettings, Signal, QPoint, QUrl, QTimer
 from PySide6.QtGui import QAction, QKeySequence, QDesktopServices, QShortcut
 
 from config import (
     APP_NAME, ORG_NAME, BUYMEACOFFEE_URL, GITHUB_URL,
     SK_GEOMETRY, SK_SPLITTER_MAIN, SK_SPLITTER_PANE,
-    SK_LAST_PATH, SK_PREVIEW_VISIBLE, SK_PREVIEW_WIDTH,
+    SK_LAST_PATH, SK_PREVIEW_VISIBLE,
 )
 from browser import FileBrowser
 from favorites import FavoritesPanel
@@ -32,11 +32,29 @@ class TearOffTabBar(QTabBar):
     """QTabBar, der bei einem Drag außerhalb des Fensters ein Signal auslöst."""
 
     tab_detached = Signal(int, object)   # tab-index, QPoint (global)
+    tab_dropped_to_other = Signal(int, object, object)  # tab-index, target QTabBar, drop global QPoint
+    tab_drag_hover_target = Signal(object, object)  # target QTabBar | None, global QPoint | None
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._press_pos = None
         self._press_idx = -1
+        self._hover_target = None
+
+    @staticmethod
+    def _tab_bar_at_global_pos(global_pos):
+        target = QApplication.widgetAt(global_pos)
+        while target is not None and not isinstance(target, QTabBar):
+            target = target.parentWidget()
+        return target if isinstance(target, QTabBar) else None
+
+    def _set_hover_target(self, target):
+        if target is self:
+            target = None
+        if target is self._hover_target:
+            return
+        self._hover_target = target
+        # Position wird im Move-Event separat emittiert.
 
     def mousePressEvent(self, e):
         if e.button() == Qt.MouseButton.LeftButton:
@@ -44,19 +62,49 @@ class TearOffTabBar(QTabBar):
             self._press_idx = self.tabAt(self._press_pos)
         super().mousePressEvent(e)
 
+    def mouseMoveEvent(self, e):
+        if (
+            self._press_idx >= 0
+            and (e.buttons() & Qt.MouseButton.LeftButton)
+        ):
+            global_pos = self.mapToGlobal(e.position().toPoint())
+            target = self._tab_bar_at_global_pos(global_pos)
+            self._set_hover_target(target)
+            self.tab_drag_hover_target.emit(self._hover_target, global_pos)
+        super().mouseMoveEvent(e)
+
     def mouseReleaseEvent(self, e):
         if e.button() == Qt.MouseButton.LeftButton and self._press_idx >= 0:
             release_global = self.mapToGlobal(e.position().toPoint())
             tab_widget = self.parent()
+
+            # Tab auf andere Tab-Leiste gezogen (links <-> rechts)
+            target = self._tab_bar_at_global_pos(release_global)
+            if (
+                isinstance(tab_widget, QTabWidget)
+                and isinstance(target, QTabBar)
+                and target is not self
+            ):
+                self.tab_dropped_to_other.emit(self._press_idx, target, release_global)
+                self._set_hover_target(None)
+                self.tab_drag_hover_target.emit(None, None)
+                self._press_idx = -1
+                self._press_pos = None
+                return
+
             if (
                 isinstance(tab_widget, QTabWidget)
                 and tab_widget.count() > 1
                 and not self.window().frameGeometry().contains(release_global)
             ):
                 self.tab_detached.emit(self._press_idx, release_global)
+                self._set_hover_target(None)
+                self.tab_drag_hover_target.emit(None, None)
                 self._press_idx = -1
                 self._press_pos = None
                 return
+        self._set_hover_target(None)
+        self.tab_drag_hover_target.emit(None, None)
         self._press_idx = -1
         self._press_pos = None
         super().mouseReleaseEvent(e)
@@ -149,6 +197,7 @@ class MainWindow(QMainWindow):
         else:
             start_path = s.value(SK_LAST_PATH, str(Path.home()))
             self._add_tab(start_path, self.tabs)
+        self._update_tab_bar_visibility()
 
         self.fav_panel.navigate.connect(self._fav_navigate)
 
@@ -165,18 +214,16 @@ class MainWindow(QMainWindow):
         tear_bar.customContextMenuRequested.connect(
             lambda pos, _tw=tw: self._tab_bar_ctx_menu(pos, _tw)
         )
+        tear_bar.tab_dropped_to_other.connect(
+            lambda idx, target_bar, drop_pos, _tw=tw: self._handle_cross_pane_tab_drop(_tw, idx, target_bar, drop_pos)
+        )
+        tear_bar.tab_drag_hover_target.connect(self._update_tab_drop_indicator)
         tw.setTabBar(tear_bar)
         tw.setTabsClosable(False)  # Eigene Buttons via _add_close_btn
+        tw.setTabBarAutoHide(True)  # Im Split-Modus per _update_tab_bar_visibility überschrieben
         tw.setMovable(True)
         tw.setDocumentMode(True)
         tw.currentChanged.connect(lambda idx, t=tw: self._tab_changed(idx, t))
-
-        btn_new = QToolButton()
-        btn_new.setText(" + ")
-        btn_new.setToolTip("Neuer Tab  (Ctrl+T)")
-        btn_new.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        btn_new.clicked.connect(lambda: self._new_tab(tw))
-        tw.setCornerWidget(btn_new, Qt.Corner.TopRightCorner)
         return tw
 
     def _add_close_btn(self, tw: QTabWidget, idx: int, browser: "FileBrowser"):
@@ -196,11 +243,14 @@ class MainWindow(QMainWindow):
         browser = FileBrowser(path)
         browser.path_changed.connect(self._path_changed)
         browser.request_add_fav.connect(self.fav_panel.add_current)
+        browser.request_new_tab.connect(lambda t=tw: self._new_tab(t))
+        browser.request_open_path_in_new_tab.connect(lambda p, t=tw: self._add_tab(p, t))
         browser.selection_changed.connect(self._on_selection_changed)
         name = Path(path).name if path else "Home"
         idx = tw.addTab(browser, name or "/")
         self._add_close_btn(tw, idx, browser)
         tw.setCurrentIndex(idx)
+        self._update_tab_bar_visibility()
         return browser
 
     def _add_existing_tab(self, browser: "FileBrowser", tab_widget: QTabWidget | None = None):
@@ -208,11 +258,14 @@ class MainWindow(QMainWindow):
         tw = tab_widget or self.tabs
         browser.path_changed.connect(self._path_changed)
         browser.request_add_fav.connect(self.fav_panel.add_current)
+        browser.request_new_tab.connect(lambda t=tw: self._new_tab(t))
+        browser.request_open_path_in_new_tab.connect(lambda p, t=tw: self._add_tab(p, t))
         browser.selection_changed.connect(self._on_selection_changed)
         name = Path(browser.current_path).name or "/"
         idx = tw.addTab(browser, name)
         self._add_close_btn(tw, idx, browser)
         tw.setCurrentIndex(idx)
+        self._update_tab_bar_visibility()
 
     def _detach_tab(self, idx: int, global_pos):
         """Löst einen Tab aus und öffnet ihn in einem neuen Fenster."""
@@ -229,10 +282,13 @@ class MainWindow(QMainWindow):
         try:
             browser.path_changed.disconnect(self._path_changed)
             browser.request_add_fav.disconnect(self.fav_panel.add_current)
+            browser.request_new_tab.disconnect()
+            browser.request_open_path_in_new_tab.disconnect()
             browser.selection_changed.disconnect(self._on_selection_changed)
-        except RuntimeError:
+        except (RuntimeError, TypeError):
             pass
         tw.removeTab(idx)
+        self._update_tab_bar_visibility()
         new_win = MainWindow(_initial_browser=browser)
         new_win.resize(self.size())
         new_win.show()
@@ -247,12 +303,15 @@ class MainWindow(QMainWindow):
         tw = tab_widget or self.tabs
         if tw.count() > 1:
             tw.removeTab(idx)
+            self._update_tab_bar_visibility()
         elif tw is self.tabs_right:
             # Letzter Tab im rechten Pane → Split-Modus beenden
             self.tabs_right.setVisible(False)
+            self._update_tab_bar_visibility()
         elif tw is self.tabs and self.tabs_right.isVisible():
             # Letzter Tab im linken Pane während Split aktiv → Split beenden
             self.tabs_right.setVisible(False)
+            self._update_tab_bar_visibility()
 
     def _tab_bar_ctx_menu(self, pos, tw: QTabWidget):
         """Kontextmenü auf der Tab-Leiste — nur im Split-Modus."""
@@ -274,20 +333,147 @@ class MainWindow(QMainWindow):
     def _move_tab_to_other_pane(self, source: QTabWidget, idx: int):
         """Verschiebt einen Tab von einer Pane in die andere."""
         target = self.tabs_right if source is self.tabs else self.tabs
+        self._move_tab_between_panes(source, idx, target)
+
+    def _move_tab_between_panes(
+        self,
+        source: QTabWidget,
+        idx: int,
+        target: QTabWidget,
+        target_insert_idx: int | None = None,
+        emphasize: bool = False,
+    ):
+        """Verschiebt einen Tab von source nach target."""
+        if source is target:
+            return
+        if source is self.tabs and source.count() <= 1:
+            # Linke Pane darf nie leer werden
+            return
         browser = source.widget(idx)
         if not isinstance(browser, FileBrowser):
             return
         try:
             browser.path_changed.disconnect(self._path_changed)
             browser.request_add_fav.disconnect(self.fav_panel.add_current)
+            browser.request_new_tab.disconnect()
+            browser.request_open_path_in_new_tab.disconnect()
             browser.selection_changed.disconnect(self._on_selection_changed)
-        except RuntimeError:
+        except (RuntimeError, TypeError):
             pass
         source.removeTab(idx)
-        self._add_existing_tab(browser, target)
+        inserted_idx = self._insert_existing_tab(browser, target, target_insert_idx)
+        if emphasize:
+            self._emphasize_moved_tab(target, inserted_idx)
         # Rechte Pane ist jetzt leer → Split-Modus beenden
         if source is self.tabs_right and source.count() == 0:
             self.tabs_right.setVisible(False)
+        self._update_tab_bar_visibility()
+
+    def _handle_cross_pane_tab_drop(self, source: QTabWidget, idx: int, target_bar: QTabBar, drop_pos):
+        """Behandelt Maus-Drop eines Tabs auf die jeweils andere Pane."""
+        target_tw: QTabWidget | None = None
+        if target_bar is self.tabs.tabBar():
+            target_tw = self.tabs
+        elif target_bar is self.tabs_right.tabBar():
+            target_tw = self.tabs_right
+        if target_tw is None:
+            return
+        local_pos = target_bar.mapFromGlobal(drop_pos)
+        target_idx = target_bar.tabAt(local_pos)
+        if target_idx < 0:
+            target_idx = target_tw.count()
+        self._move_tab_between_panes(
+            source,
+            idx,
+            target_tw,
+            target_insert_idx=target_idx,
+            emphasize=True,
+        )
+        self._hide_tab_drop_indicator()
+
+    def _insert_existing_tab(
+        self,
+        browser: "FileBrowser",
+        tab_widget: QTabWidget,
+        insert_idx: int | None = None,
+    ) -> int:
+        """Nimmt einen bestehenden Browser-Widget auf und gibt den Index zurück."""
+        tw = tab_widget
+        browser.path_changed.connect(self._path_changed)
+        browser.request_add_fav.connect(self.fav_panel.add_current)
+        browser.request_new_tab.connect(lambda t=tw: self._new_tab(t))
+        browser.selection_changed.connect(self._on_selection_changed)
+        name = Path(browser.current_path).name or "/"
+        if insert_idx is None or insert_idx < 0 or insert_idx > tw.count():
+            idx = tw.addTab(browser, name)
+        else:
+            idx = tw.insertTab(insert_idx, browser, name)
+        self._add_close_btn(tw, idx, browser)
+        tw.setCurrentIndex(idx)
+        self._update_tab_bar_visibility()
+        return idx
+
+    def _emphasize_moved_tab(self, tab_widget: QTabWidget, idx: int):
+        """Markiert einen frisch verschobenen Tab kurz sichtbar (ohne Textänderung)."""
+        if idx < 0 or idx >= tab_widget.count():
+            return
+        bar = tab_widget.tabBar()
+        original_color = bar.tabTextColor(idx)
+        bar.setTabTextColor(idx, tab_widget.palette().color(tab_widget.palette().ColorRole.Highlight))
+
+        def _clear_mark():
+            if idx < tab_widget.count():
+                bar.setTabTextColor(idx, original_color)
+
+        QTimer.singleShot(900, _clear_mark)
+
+    def _update_tab_bar_visibility(self):
+        """Im Split immer beide Tab-Leisten zeigen; sonst links auto-hide."""
+        in_split = self.tabs_right.isVisible()
+        self.tabs.setTabBarAutoHide(not in_split)
+        self.tabs_right.setTabBarAutoHide(not in_split)
+
+    def _tab_drop_indicator(self):
+        if not hasattr(self, "_drop_indicator"):
+            w = QWidget(self)
+            w.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            w.setStyleSheet(
+                "background: palette(highlight);"
+                "border-radius: 1px;"
+            )
+            w.hide()
+            self._drop_indicator = w
+        return self._drop_indicator
+
+    def _hide_tab_drop_indicator(self):
+        if hasattr(self, "_drop_indicator"):
+            self._drop_indicator.hide()
+
+    def _update_tab_drop_indicator(self, target_bar, global_pos):
+        """Zeigt eine Einfügelinie im Ziel-TabBar bereits während des Ziehens."""
+        if target_bar is None or global_pos is None:
+            self._hide_tab_drop_indicator()
+            return
+        if target_bar not in (self.tabs.tabBar(), self.tabs_right.tabBar()):
+            self._hide_tab_drop_indicator()
+            return
+
+        local = target_bar.mapFromGlobal(global_pos)
+        idx = target_bar.tabAt(local)
+        tab_h = target_bar.height()
+
+        if idx < 0:
+            x_local = 1 if target_bar.count() == 0 else target_bar.tabRect(target_bar.count() - 1).right() + 1
+        else:
+            rect = target_bar.tabRect(idx)
+            x_local = rect.left() if local.x() < rect.center().x() else rect.right() + 1
+
+        top_left_global = target_bar.mapToGlobal(QPoint(x_local - 1, 2))
+        top_left = self.mapFromGlobal(top_left_global)
+
+        indicator = self._tab_drop_indicator()
+        indicator.setGeometry(top_left.x(), top_left.y(), 3, max(8, tab_h - 4))
+        indicator.show()
 
     def _current_browser_in(self, tw: QTabWidget) -> "FileBrowser | None":
         """Gibt den aktiven Browser im angegebenen TabWidget zurück."""
@@ -329,6 +515,8 @@ class MainWindow(QMainWindow):
         browser = tw.widget(idx)
         if isinstance(browser, FileBrowser):
             self._path_changed(browser.current_path)
+            if hasattr(self, "_a_folders_top"):
+                self._a_folders_top.setChecked(browser.model.folders_always_top())
 
     def _toggle_split(self):
         """Schaltet Dual-Pane (rechte Tab-Gruppe) ein/aus (F8)."""
@@ -342,6 +530,7 @@ class MainWindow(QMainWindow):
             # Splitter gleichmäßig aufteilen
             total = self._pane_splitter.width()
             self._pane_splitter.setSizes([total // 2, total // 2])
+        self._update_tab_bar_visibility()
         s = QSettings(ORG_NAME, "MainWindow")
         s.setValue(SK_SPLITTER_PANE, self._pane_splitter.saveState())
 
@@ -457,6 +646,14 @@ class MainWindow(QMainWindow):
         self._a(m_view, "Vorschau",         "F9",            self._toggle_preview)
         m_view.addSeparator()
         self._a(m_view, "Versteckte Dateien", "Ctrl+H", lambda: self.current_browser and self.current_browser._toggle_hidden())
+        self._a_folders_top = self._a(m_view, "Ordner immer oben")
+        self._a_folders_top.setCheckable(True)
+        self._a_folders_top.setChecked(True)
+        self._a_folders_top.triggered.connect(
+            lambda enabled: self.current_browser and self.current_browser.set_folders_always_top(enabled)
+        )
+        if self.current_browser is not None:
+            self._a_folders_top.setChecked(self.current_browser.model.folders_always_top())
 
         # ── Hilfe ─────────────────────────────────────────────────────────────
         m = mb.addMenu("Hilfe")

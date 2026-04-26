@@ -10,9 +10,9 @@ import shutil
 from pathlib import Path
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QToolButton,
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QFrame, QMenu, QMessageBox, QInputDialog, QAbstractItemView,
-    QHeaderView, QFileDialog, QSizePolicy, QProgressDialog, QDialog,
+    QHeaderView, QFileDialog, QProgressDialog, QDialog,
     QApplication, QListView, QStackedWidget,
 )
 from PySide6.QtCore import (
@@ -21,8 +21,11 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QDesktopServices, QPalette, QKeySequence, QShortcut
 
-from config import ORG_NAME, SK_SHOW_HIDDEN, SK_COL_WIDTHS, SK_COL_SORT_COL, SK_COL_SORT_ORDER, SK_VIEW_MODE
-from models import ExplorerModel
+from config import (
+    ORG_NAME, SK_SHOW_HIDDEN, SK_COL_WIDTHS, SK_COL_SORT_COL, SK_COL_SORT_ORDER,
+    SK_VIEW_MODE, SK_FOLDERS_TOP,
+)
+from models import ExplorerModel, ExplorerProxyModel
 from workers import UndoStack, CopyWorker
 from treeview import ExplorerTreeView
 from addressbar import BreadcrumbBar
@@ -30,6 +33,7 @@ from fileops import build_ops, safe_trash, reveal_in_filemanager, get_clipboard_
 from dialogs import BatchRenameDialog
 from toolbar import BrowserToolbar
 from search_worker import SearchWorker
+from logger import log_exception
 
 
 def _show_macos_fda_dialog(parent=None):
@@ -47,6 +51,8 @@ def _show_macos_fda_dialog(parent=None):
 class FileBrowser(QWidget):
     path_changed      = Signal(str)
     request_add_fav   = Signal(str)
+    request_new_tab   = Signal()
+    request_open_path_in_new_tab = Signal(str)
     selection_changed = Signal(str)   # Pfad des ausgewählten Elements oder ""
 
     def __init__(self, start_path: str | None = None, parent=None):
@@ -59,7 +65,9 @@ class FileBrowser(QWidget):
         self._undo_stack = UndoStack()
         self._worker: CopyWorker | None = None
         self._pending_select: str | None = None
+        self._pending_row: int | None = None
         self._select_first_on_load: bool = False
+        self._op_message: str = ""
 
         self._build_ui()
         s = QSettings(ORG_NAME, "FileBrowser")
@@ -85,6 +93,7 @@ class FileBrowser(QWidget):
         self.toolbar.reload_clicked.connect(self.refresh)
         self.toolbar.new_folder_clicked.connect(self._new_folder)
         self.toolbar.view_toggle.connect(self._toggle_view_mode)
+        self.toolbar.new_tab_clicked.connect(self.request_new_tab.emit)
         root.addWidget(self.toolbar)
 
         # Kompatibilitäts-Aliase: _update_nav_btns() referenziert btn_back/btn_forward
@@ -115,12 +124,14 @@ class FileBrowser(QWidget):
         line.setFrameShadow(QFrame.Shadow.Sunken)
         root.addWidget(line)
 
-        self.model = ExplorerModel()
+        self._fs_model = ExplorerModel()
+        self.model = ExplorerProxyModel(self._fs_model, self)
 
         # Versteckte-Dateien-Zustand aus QSettings wiederherstellen
         s = QSettings(ORG_NAME, "FileBrowser")
-        if s.value("show_hidden", False, type=bool):
+        if s.value(SK_SHOW_HIDDEN, False, type=bool):
             self.model.setFilter(self.model.filter() | QDir.Filter.Hidden)
+        self.model.set_folders_always_top(s.value(SK_FOLDERS_TOP, True, type=bool))
 
         self.tree = ExplorerTreeView()
         self.tree._current_path = self._cur
@@ -141,6 +152,7 @@ class FileBrowser(QWidget):
         self.tree.doubleClicked.connect(self._dbl_click)
         self.tree.selectionModel().selectionChanged.connect(self._sel_changed)
         self.tree.files_dropped.connect(self._on_files_dropped)
+        self.tree.open_in_new_tab.connect(self.request_open_path_in_new_tab.emit)
 
         hdr = self.tree.header()
         hdr.setStretchLastSection(False)
@@ -184,15 +196,28 @@ class FileBrowser(QWidget):
 
         root.addWidget(self._view_stack, 1)
 
+        self.status_row = QWidget()
+        self.status_row.setFixedHeight(20)
+        status_layout = QHBoxLayout(self.status_row)
+        status_layout.setContentsMargins(8, 0, 8, 0)
+        status_layout.setSpacing(8)
+
         self.status = QLabel()
-        self.status.setFixedHeight(20)
         f = self.status.font()
         if f.pointSize() > 0:
             f.setPointSize(10)
         self.status.setFont(f)
         self.status.setForegroundRole(QPalette.ColorRole.PlaceholderText)
-        self.status.setContentsMargins(8, 0, 8, 0)
-        root.addWidget(self.status)
+        self.status.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+
+        self.status_op = QLabel()
+        self.status_op.setFont(f)
+        self.status_op.setStyleSheet("color: white;")
+        self.status_op.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
+
+        status_layout.addWidget(self.status, 1)
+        status_layout.addWidget(self.status_op, 0)
+        root.addWidget(self.status_row)
 
     # ── Event-Filter (Icon-Raster: Pfeil-Wrap-Around) ─────────────────────────
     def eventFilter(self, obj, event):
@@ -219,6 +244,14 @@ class FileBrowser(QWidget):
                     | QItemSelectionModel.SelectionFlag.Rows,
                 )
                 return True
+        if obj is self.icon_view and event.type() == QEvent.Type.MouseButtonRelease:
+            if event.button() == Qt.MouseButton.MiddleButton:
+                idx = self.icon_view.indexAt(event.position().toPoint())
+                if idx.isValid():
+                    path = self.model.filePath(idx)
+                    if os.path.isdir(path):
+                        self.request_open_path_in_new_tab.emit(path)
+                        return True
         return super().eventFilter(obj, event)
 
     # ── Tastaturkürzel ────────────────────────────────────────────────────────
@@ -245,6 +278,11 @@ class FileBrowser(QWidget):
         sc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
         sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         sc.activated.connect(self._escape)
+
+        for seq in ("Ctrl+Return", "Ctrl+Enter", "Meta+Return", "Meta+Enter"):
+            sc_new = QShortcut(QKeySequence(seq), self)
+            sc_new.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            sc_new.activated.connect(self._open_sel_in_new_tab)
 
     # ── Navigation ────────────────────────────────────────────────────────────
     def navigate(self, path: str):
@@ -291,7 +329,18 @@ class FileBrowser(QWidget):
             sel = self.model.index(self._pending_select)
             if sel.isValid():
                 self.tree._select(sel)
+                self._pending_row = None
             self._pending_select = None
+        elif self._pending_row is not None:
+            row = max(0, self._pending_row)
+            self._pending_row = None
+            target = self.model.index(row, 0, self.tree.rootIndex())
+            if not target.isValid():
+                count = self.model.rowCount(self.tree.rootIndex())
+                if count > 0:
+                    target = self.model.index(count - 1, 0, self.tree.rootIndex())
+            if target.isValid():
+                self.tree._select(target)
         else:
             give_focus = self._select_first_on_load
             self._select_first_on_load = False
@@ -308,7 +357,16 @@ class FileBrowser(QWidget):
                             self.model.directoryLoaded.disconnect(_on_dir_loaded)
                         except RuntimeError:
                             pass
-                        f = self.model.index(0, 0, self.tree.rootIndex())
+                        if self._pending_row is not None:
+                            rr = max(0, self._pending_row)
+                            self._pending_row = None
+                            f = self.model.index(rr, 0, self.tree.rootIndex())
+                            if not f.isValid():
+                                c = self.model.rowCount(self.tree.rootIndex())
+                                if c > 0:
+                                    f = self.model.index(c - 1, 0, self.tree.rootIndex())
+                        else:
+                            f = self.model.index(0, 0, self.tree.rootIndex())
                         if f.isValid():
                             self.tree._select(f)
                             if _give_focus:
@@ -372,10 +430,15 @@ class FileBrowser(QWidget):
         except Exception:
             disk_text = ""
 
+        parts = [sel_text]
         if disk_text:
-            self.status.setText(f"{sel_text}  ·  {disk_text}")
-        else:
-            self.status.setText(sel_text)
+            parts.append(disk_text)
+        self.status.setText("  ·  ".join(parts))
+        self.status_op.setText(self._op_message)
+
+    def _set_operation_message(self, text: str):
+        self._op_message = text
+        self._update_status()
 
     def save_column_state(self):
         """Speichert Spaltenbreiten und Sortierung global in QSettings.
@@ -389,7 +452,9 @@ class FileBrowser(QWidget):
         s = QSettings(ORG_NAME, "FileBrowser")
         s.setValue(SK_COL_WIDTHS, json.dumps(widths))
         s.setValue(SK_COL_SORT_COL, hdr.sortIndicatorSection())
-        s.setValue(SK_COL_SORT_ORDER, int(hdr.sortIndicatorOrder()))
+        order = hdr.sortIndicatorOrder()
+        order_value = order.value if hasattr(order, "value") else int(order)
+        s.setValue(SK_COL_SORT_ORDER, order_value)
 
     def restore_column_state(self):
         """Stellt Spaltenbreiten und Sortierung aus QSettings wieder her.
@@ -412,8 +477,12 @@ class FileBrowser(QWidget):
                 pass
 
         # Sortierung wiederherstellen
-        sort_col   = s.value(SK_COL_SORT_COL, 0, type=int)
-        sort_order = s.value(SK_COL_SORT_ORDER, Qt.SortOrder.AscendingOrder.value, type=int)
+        sort_col = s.value(SK_COL_SORT_COL, 0, type=int)
+        sort_order_raw = s.value(SK_COL_SORT_ORDER, Qt.SortOrder.AscendingOrder.value)
+        try:
+            sort_order = int(sort_order_raw)
+        except (TypeError, ValueError):
+            sort_order = Qt.SortOrder.AscendingOrder.value
         self.tree.sortByColumn(sort_col, Qt.SortOrder(sort_order))
 
     # ── Auswahl-Hilfsmethoden ─────────────────────────────────────────────────
@@ -503,7 +572,13 @@ class FileBrowser(QWidget):
         ops_copy = list(ops)  # Closure-Snapshot
         self._worker = CopyWorker(ops_copy, mode)
         self._worker.progress.connect(dlg.setValue)
-        self._worker.error.connect(lambda msg: QMessageBox.warning(self, "Fehler", msg))
+        self._worker.error.connect(
+            lambda msg: (
+                log_exception(RuntimeError(msg), f"{mode} worker"),
+                QMessageBox.warning(self, "Fehler", msg),
+            )
+        )
+        self._set_operation_message(f"{'Kopieren' if mode == 'copy' else 'Verschieben'} läuft …")
 
         def on_finished(dst_paths):
             dlg.close()
@@ -513,6 +588,7 @@ class FileBrowser(QWidget):
                 pairs = [(dst, src) for (src, _), dst in zip(ops_copy, dst_paths)]
                 self._undo_stack.push({"op": "move", "pairs": pairs})
             self.refresh()
+            self._set_operation_message("")
 
         self._worker.finished_ops.connect(on_finished)
         dlg.canceled.connect(self._worker.requestInterruption)
@@ -526,6 +602,11 @@ class FileBrowser(QWidget):
                 self.navigate(paths[0])
             else:
                 QDesktopServices.openUrl(QUrl.fromLocalFile(paths[0]))
+
+    def _open_sel_in_new_tab(self):
+        paths = self._sel_paths()
+        if len(paths) == 1 and os.path.isdir(paths[0]):
+            self.request_open_path_in_new_tab.emit(paths[0])
 
     def _dbl_click(self, index: QModelIndex):
         path = self.model.filePath(index)
@@ -578,6 +659,11 @@ class FileBrowser(QWidget):
         paths = self._sel_paths()
         if not paths:
             return
+        # Fokusposition merken, damit nach dem Refresh nicht auf Zeile 0 gesprungen wird.
+        active_view = self.icon_view if self._view_stack.currentIndex() == 1 else self.tree
+        sel_rows = sorted({i.row() for i in active_view.selectionModel().selectedRows(0)})
+        if sel_rows:
+            self._pending_row = sel_rows[0]
         names = [Path(p).name for p in paths]
         text  = "\n".join(names[:6])
         if len(names) > 6:
@@ -839,7 +925,13 @@ class FileBrowser(QWidget):
             show = True
         # Zustand dauerhaft speichern
         s = QSettings(ORG_NAME, "FileBrowser")
-        s.setValue("show_hidden", show)
+        s.setValue(SK_SHOW_HIDDEN, show)
+
+    def set_folders_always_top(self, enabled: bool):
+        self.model.set_folders_always_top(enabled)
+        QSettings(ORG_NAME, "FileBrowser").setValue(SK_FOLDERS_TOP, bool(enabled))
+        hdr = self.tree.header()
+        self.tree.sortByColumn(hdr.sortIndicatorSection(), hdr.sortIndicatorOrder())
 
     def _properties(self, path: str):
         fi = QFileInfo(path)
@@ -876,8 +968,6 @@ class FileBrowser(QWidget):
 
     def _compress_selection(self):
         """Komprimiert die Auswahl als ZIP im aktuellen Ordner."""
-        from fileops import compress_to_zip
-        from PySide6.QtWidgets import QProgressDialog
         paths = self._sel_paths()
         if not paths:
             return
@@ -898,28 +988,55 @@ class FileBrowser(QWidget):
         from PySide6.QtCore import QThread, Signal as _Signal
 
         class _ZipThread(QThread):
-            done = _Signal(bool)
+            done = _Signal(bool, bool)   # ok, cancelled
+            progress = _Signal(int, int)  # current, total
+
             def __init__(self, srcs, dst):
                 super().__init__()
                 self._srcs, self._dst = srcs, dst
+
             def run(self):
                 from fileops import compress_to_zip
-                ok = compress_to_zip(self._srcs, self._dst)
-                self.done.emit(ok)
+                self._cancelled = False
+
+                def _on_progress(current: int, total: int):
+                    self.progress.emit(current, total)
+                    if self.isInterruptionRequested():
+                        self._cancelled = True
+                        return False
+                    return True
+
+                ok = compress_to_zip(self._srcs, self._dst, progress_callback=_on_progress)
+                if self.isInterruptionRequested():
+                    self._cancelled = True
+                self.done.emit(ok, self._cancelled)
 
         self._zip_thread = _ZipThread(paths, dest)
-        self._zip_thread.done.connect(lambda ok: (
-            dlg.close(),
-            self.refresh(),
-            QMessageBox.warning(self, "Fehler", "Komprimierung fehlgeschlagen.") if not ok else None,
-        ))
+        self._set_operation_message("ZIP-Komprimierung läuft …")
+
+        def _on_progress(current: int, total: int):
+            if dlg.maximum() != max(1, total):
+                dlg.setRange(0, max(1, total))
+            dlg.setValue(current)
+
+        def _on_done(ok: bool, cancelled: bool):
+            dlg.close()
+            self.refresh()
+            self._set_operation_message("")
+            if (not ok) and (not cancelled):
+                QMessageBox.warning(self, "Fehler", "Komprimierung fehlgeschlagen.")
+
+        self._zip_thread.progress.connect(_on_progress)
+        self._zip_thread.done.connect(_on_done)
         dlg.canceled.connect(self._zip_thread.requestInterruption)
         self._zip_thread.start()
 
     def _extract_archive(self, path: str):
         """Entpackt ein Archiv in den aktuellen Ordner."""
         from fileops import extract_archive
+        self._set_operation_message("Entpacken läuft …")
         ok = extract_archive(path, self._cur)
+        self._set_operation_message("")
         if ok:
             self.refresh()
         else:

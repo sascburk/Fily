@@ -27,6 +27,7 @@ class BrowserToolbar(QWidget):
     reload_clicked     = Signal()
     new_folder_clicked = Signal()
     view_toggle        = Signal()   # Liste ↔ Icon-Raster
+    new_tab_clicked    = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -42,6 +43,11 @@ class BrowserToolbar(QWidget):
         self.btn_reload  = self._btn("Aktualisieren (F5)",    QStyle.StandardPixmap.SP_BrowserReload)
         self.btn_new_dir = self._btn("Neuer Ordner (Ctrl+N)", QStyle.StandardPixmap.SP_FileDialogNewFolder)
         self.btn_view    = self._btn("Ansicht wechseln",      QStyle.StandardPixmap.SP_FileDialogDetailedView)
+        self.btn_new_tab = QToolButton()
+        self.btn_new_tab.setText("+")
+        self.btn_new_tab.setToolTip("Neuer Tab  (Ctrl+T)")
+        self.btn_new_tab.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_new_tab.setFixedSize(28, 28)
 
         # Zurück/Vor zu Beginn deaktiviert (keine Navigationhistorie vorhanden)
         self.btn_back.setEnabled(False)
@@ -53,12 +59,14 @@ class BrowserToolbar(QWidget):
         self.btn_reload.clicked.connect(self.reload_clicked)
         self.btn_new_dir.clicked.connect(self.new_folder_clicked)
         self.btn_view.clicked.connect(self.view_toggle)
+        self.btn_new_tab.clicked.connect(self.new_tab_clicked)
 
         for btn in (self.btn_back, self.btn_forward, self.btn_up,
                     self.btn_reload, self.btn_new_dir, self.btn_view):
             layout.addWidget(btn)
 
         layout.addStretch(1)
+        layout.addWidget(self.btn_new_tab)
 
     def _btn(self, tip: str, std_icon) -> QToolButton:
         """Erstellt einen kompakten Icon-Button mit Qt-Standard-Icon."""

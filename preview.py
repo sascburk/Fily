@@ -15,8 +15,8 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QScrollArea, QSizePolicy, QFrame,
     QFileIconProvider,
 )
-from PySide6.QtCore import Qt, QSize, QSettings, QFileInfo
-from PySide6.QtGui import QPixmap, QColor, QPainter, QFont
+from PySide6.QtCore import Qt, QSize, QSettings, QFileInfo, QThread, Signal, QTimer
+from PySide6.QtGui import QPixmap, QColor, QPainter, QFont, QImage
 
 from config import ORG_NAME, SK_PREVIEW_WIDTH
 from models import ExplorerModel
@@ -34,6 +34,88 @@ IMAGE_EXTENSIONS = {
     ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif",
     ".webp", ".ico", ".heic", ".heif",
 }
+HEAVY_EXTENSIONS = {
+    ".mp4", ".mkv", ".mov", ".avi", ".webm", ".zip", ".tar", ".gz", ".xz", ".7z",
+    ".iso", ".dmg", ".pkg", ".mp3", ".wav", ".flac",
+}
+PREVIEW_SIZE_LIMIT = 64 * 1024 * 1024  # 64 MB
+
+
+class _PreviewWorker(QThread):
+    """Lädt teure Vorschau-Inhalte im Hintergrund."""
+
+    loaded = Signal(int, dict)  # request_id, payload
+
+    def __init__(self, request_id: int, path: str, max_w: int, max_h: int, parent=None):
+        super().__init__(parent)
+        self._request_id = request_id
+        self._path = path
+        self._max_w = max_w
+        self._max_h = max_h
+
+    def run(self):
+        fi = QFileInfo(self._path)
+        if not fi.exists():
+            self.loaded.emit(self._request_id, {"ok": False})
+            return
+
+        suffix = Path(self._path).suffix.lower()
+        date_str = fi.lastModified().toString("dd.MM.yyyy  HH:mm")
+
+        if self.isInterruptionRequested():
+            return
+        if fi.isFile() and (fi.size() > PREVIEW_SIZE_LIMIT or suffix in HEAVY_EXTENSIONS):
+            meta = f"{ExplorerModel._fmt_size(fi.size())}\n{date_str}"
+            self.loaded.emit(self._request_id, {"ok": True, "kind": "icon", "meta": meta})
+            return
+
+        # Bilder: QImage im Worker laden (QPixmap erst im UI-Thread)
+        if suffix in IMAGE_EXTENSIONS and fi.isFile():
+            img = QImage(self._path)
+            if not img.isNull():
+                if self.isInterruptionRequested():
+                    return
+                scaled = img.scaled(
+                    max(1, self._max_w),
+                    max(1, self._max_h),
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                meta = (
+                    f"{ExplorerModel._fmt_size(fi.size())}\n"
+                    f"{img.width()} × {img.height()} px\n"
+                    f"{date_str}"
+                )
+                self.loaded.emit(
+                    self._request_id,
+                    {"ok": True, "kind": "image", "image": scaled, "meta": meta},
+                )
+                return
+
+        # Textdateien: nur die ersten 4 KB laden
+        if suffix in TEXT_EXTENSIONS and fi.isFile():
+            if self.isInterruptionRequested():
+                return
+            try:
+                content = Path(self._path).read_bytes()[:4096].decode("utf-8", errors="replace")
+            except Exception:
+                content = ""
+            meta = f"{ExplorerModel._fmt_size(fi.size())}\n{date_str}"
+            self.loaded.emit(
+                self._request_id,
+                {"ok": True, "kind": "text", "text": content, "meta": meta},
+            )
+            return
+
+        # Standard
+        if fi.isDir():
+            meta = "Ordner"
+        else:
+            meta = f"{ExplorerModel._fmt_size(fi.size())}\n{date_str}"
+        self.loaded.emit(
+            self._request_id,
+            {"ok": True, "kind": "icon", "meta": meta},
+        )
 
 
 class PreviewDrawer(QWidget):
@@ -49,6 +131,14 @@ class PreviewDrawer(QWidget):
         super().__init__(parent)
         self.setMinimumWidth(160)
         self.setMaximumWidth(500)
+        self._icon_provider = QFileIconProvider()
+        self._request_id = 0
+        self._worker: _PreviewWorker | None = None
+        self._pending_path: str | None = None
+        self._debounce = QTimer(self)
+        self._debounce.setSingleShot(True)
+        self._debounce.setInterval(80)
+        self._debounce.timeout.connect(self._start_preview_load)
 
         # Gespeicherte Breite als bevorzugte Breite setzen (nicht fixiert,
         # damit der Splitter weiterhin die Größe anpassen kann)
@@ -89,6 +179,7 @@ class PreviewDrawer(QWidget):
         self._text_scroll = QScrollArea()
         self._text_scroll.setWidgetResizable(True)
         self._text_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._text_scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._text_content = QLabel()
         self._text_content.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self._text_content.setWordWrap(True)
@@ -104,8 +195,6 @@ class PreviewDrawer(QWidget):
         self._text_scroll.setVisible(False)
         layout.addWidget(self._text_scroll, 1)
 
-        layout.addStretch(1)
-
         # Trennlinie links (zum Browser hin)
         self.setStyleSheet(
             "PreviewDrawer { border-left: 1px solid palette(mid); }"
@@ -113,68 +202,60 @@ class PreviewDrawer(QWidget):
 
     def show_path(self, path: str):
         """Zeigt Vorschau und Metadaten für den gegebenen Pfad an."""
+        self._request_id += 1
+        if self._worker and self._worker.isRunning():
+            self._worker.requestInterruption()
+
         fi = QFileInfo(path)
         if not fi.exists():
             self._clear()
             return
 
-        suffix = Path(path).suffix.lower()
         name = fi.fileName()
 
         # ── Name ──────────────────────────────────────────────────────────────
         self._name_label.setText(name)
+        self._set_file_icon(path)
+        self._text_scroll.setVisible(False)
+        self._text_content.clear()
+        self._meta_label.setText("Lade Vorschau …")
+        self._pending_path = path
+        self._debounce.start()
 
-        # ── Metadaten ─────────────────────────────────────────────────────────
-        if fi.isDir():
-            try:
-                count = len(os.listdir(path))
-                meta = f"Ordner · {count} Elemente"
-            except PermissionError:
-                meta = "Ordner"
-        else:
-            size_str = ExplorerModel._fmt_size(fi.size())
-            date_str = fi.lastModified().toString("dd.MM.yyyy  HH:mm")
-            meta     = f"{size_str}\n{date_str}"
-        self._meta_label.setText(meta)
+    def _start_preview_load(self):
+        if not self._pending_path:
+            return
+        request_id = self._request_id
+        path = self._pending_path
+        max_w = self._img_label.width() - 8
+        max_h = self._img_label.height() - 8
+        self._worker = _PreviewWorker(request_id, path, max_w, max_h, self)
+        self._worker.loaded.connect(self._on_loaded_preview)
+        self._worker.start()
 
-        # ── Bild-Vorschau ─────────────────────────────────────────────────────
-        if suffix in IMAGE_EXTENSIONS and fi.isFile():
-            px = QPixmap(path)
-            if not px.isNull():
-                max_w = self._img_label.width() - 8
-                max_h = self._img_label.height() - 8
-                scaled = px.scaled(max_w, max_h,
-                                   Qt.AspectRatioMode.KeepAspectRatio,
-                                   Qt.TransformationMode.SmoothTransformation)
-                self._img_label.setPixmap(scaled)
-                # Auflösung zu Metadaten hinzufügen
-                size_str = ExplorerModel._fmt_size(fi.size())
-                date_str = fi.lastModified().toString("dd.MM.yyyy  HH:mm")
-                self._meta_label.setText(
-                    f"{size_str}\n{px.width()} × {px.height()} px\n{date_str}"
-                )
-                self._text_scroll.setVisible(False)
-                return
-
-        # ── Text-Vorschau ─────────────────────────────────────────────────────
-        if suffix in TEXT_EXTENSIONS and fi.isFile():
-            self._set_file_icon(path)
-            try:
-                content = Path(path).read_bytes()[:4096].decode("utf-8", errors="replace")
-            except Exception:
-                content = ""
-            self._text_content.setText(content)
+    def _on_loaded_preview(self, request_id: int, payload: dict):
+        if request_id != self._request_id:
+            return
+        if not payload.get("ok"):
+            self._clear()
+            return
+        self._meta_label.setText(payload.get("meta", ""))
+        kind = payload.get("kind")
+        if kind == "image":
+            image = payload.get("image")
+            if isinstance(image, QImage):
+                self._img_label.setPixmap(QPixmap.fromImage(image))
+            self._text_scroll.setVisible(False)
+            return
+        if kind == "text":
+            self._text_content.setText(payload.get("text", ""))
             self._text_scroll.setVisible(True)
             return
-
-        # ── Standard: Datei-Icon ──────────────────────────────────────────────
-        self._set_file_icon(path)
         self._text_scroll.setVisible(False)
 
     def _set_file_icon(self, path: str):
         """Zeigt das systemspezifische Datei-Icon im Vorschaubereich."""
-        provider = QFileIconProvider()
-        icon = provider.icon(QFileInfo(path))
+        icon = self._icon_provider.icon(QFileInfo(path))
         px = icon.pixmap(QSize(64, 64))
         self._img_label.setPixmap(px)
 

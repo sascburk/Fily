@@ -9,13 +9,15 @@ import sys
 import os
 import subprocess
 from pathlib import Path
+import traceback
 
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import QSettings
 from PySide6.QtGui import QIcon, QColor, QPalette
 
-from config import APP_NAME, ORG_NAME, VERSION, SK_FDA_HINT, asset_path
+from config import APP_NAME, ORG_NAME, SK_FDA_HINT, asset_path
 from mainwindow import MainWindow
+from logger import log_line
 
 
 def _linux_is_dark() -> bool:
@@ -65,7 +67,6 @@ def _linux_is_dark() -> bool:
 
 def _apply_dark_palette(app: QApplication) -> None:
     """Apply a Fusion-based dark palette to the QApplication."""
-    from PySide6.QtGui import QColor, QPalette
     app.setStyle("Fusion")
     p = QPalette()
     dark   = QColor(45, 45, 45)
@@ -103,9 +104,9 @@ def _macos_show_fda_dialog(parent=None) -> None:
     angezeigt wurde — verhindert wiederholtes Erscheinen beim Navigieren.
     """
     s = QSettings(ORG_NAME, "Permissions")
-    if s.value("fda_hint_shown", False, type=bool):
+    if s.value(SK_FDA_HINT, False, type=bool):
         return
-    s.setValue("fda_hint_shown", True)
+    s.setValue(SK_FDA_HINT, True)
 
     dlg = QMessageBox(parent)
     dlg.setWindowTitle("Zugriff eingeschränkt")
@@ -130,6 +131,12 @@ def _macos_show_fda_dialog(parent=None) -> None:
 
 
 def main():
+    def _global_excepthook(exc_type, exc, tb):
+        log_line("UNCAUGHT EXCEPTION:\n" + "".join(traceback.format_exception(exc_type, exc, tb)).strip())
+        sys.__excepthook__(exc_type, exc, tb)
+
+    sys.excepthook = _global_excepthook
+
     # Linux: Umgebung vor QApplication vorbereiten.
     _linux_dark = False
     if sys.platform.startswith("linux"):
@@ -169,7 +176,7 @@ def main():
 
     # FDA-Hinweis-Flag zurücksetzen, damit er pro Sitzung einmal erscheinen kann.
     if sys.platform == "darwin":
-        QSettings(ORG_NAME, "Permissions").setValue("fda_hint_shown", False)
+        QSettings(ORG_NAME, "Permissions").setValue(SK_FDA_HINT, False)
 
     # App-Icon setzen (Taskleiste / Dock / Alt+Tab)
     if sys.platform == "win32":

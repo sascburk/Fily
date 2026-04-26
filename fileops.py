@@ -17,7 +17,6 @@ from pathlib import Path
 from send2trash import send2trash as _send2trash
 
 from PySide6.QtWidgets import QMessageBox
-from PySide6.QtCore import QUrl
 
 
 def build_ops(src_paths: list[str], dest_dir: str) -> list[tuple[str, str]]:
@@ -131,9 +130,18 @@ def compress_to_zip(src_paths: list[str], dest_zip: str,
         with zipfile.ZipFile(dest_zip, "w", zipfile.ZIP_DEFLATED) as zf:
             for i, (abs_path, arcname) in enumerate(all_files):
                 if progress_callback:
-                    progress_callback(i, total)
+                    should_continue = progress_callback(i + 1, total)
+                    if should_continue is False:
+                        raise InterruptedError()
                 zf.write(abs_path, arcname)
         return True
+    except InterruptedError:
+        # Partielle ZIP-Datei bei Abbruch entfernen.
+        try:
+            Path(dest_zip).unlink(missing_ok=True)
+        except Exception:
+            pass
+        return False
     except Exception:
         return False
 

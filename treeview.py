@@ -19,6 +19,7 @@ class ExplorerTreeView(QTreeView):
 
     # Wird von FileBrowser verbunden
     files_dropped = Signal(list, str, Qt.DropAction)
+    open_in_new_tab = Signal(str)
 
     _SEL = QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Rows
 
@@ -133,3 +134,14 @@ class ExplorerTreeView(QTreeView):
                 e.ignore()
         else:
             super().dropEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.MouseButton.MiddleButton:
+            idx = self.indexAt(e.position().toPoint())
+            if idx.isValid():
+                path = self.model().filePath(idx)
+                if os.path.isdir(path):
+                    self.open_in_new_tab.emit(path)
+                    e.accept()
+                    return
+        super().mouseReleaseEvent(e)

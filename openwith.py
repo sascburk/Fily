@@ -7,7 +7,11 @@ Linux:   xdg-mime + .desktop-Dateien
 """
 import sys
 import subprocess
+import time
 from pathlib import Path
+
+_APP_CACHE_TTL_S = 300
+_apps_cache: dict[tuple[str, str], tuple[float, list[tuple[str, str]]]] = {}
 
 
 def get_apps_for_file(path: str) -> list[tuple[str, str]]:
@@ -16,11 +20,21 @@ def get_apps_for_file(path: str) -> list[tuple[str, str]]:
     Returns:
         Liste von (display_name, launch_command) oder leere Liste.
     """
+    suffix = Path(path).suffix.lower()
+    cache_key = (sys.platform, suffix)
+    now = time.time()
+    cached = _apps_cache.get(cache_key)
+    if cached and (now - cached[0]) < _APP_CACHE_TTL_S:
+        return list(cached[1])
+
     if sys.platform == "darwin":
-        return _macos_apps(path)
-    if sys.platform == "win32":
-        return _windows_apps(path)
-    return _linux_apps(path)
+        apps = _macos_apps(path)
+    elif sys.platform == "win32":
+        apps = _windows_apps(path)
+    else:
+        apps = _linux_apps(path)
+    _apps_cache[cache_key] = (now, apps)
+    return list(apps)
 
 
 def open_with(path: str, app_command: str):

@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from PySide6.QtCore import (
-    Qt, QModelIndex, QAbstractListModel, QDir, QFileInfo,
+    Qt, QModelIndex, QAbstractListModel, QDir, QFileInfo, Signal, QSortFilterProxyModel,
     QMimeData, QUrl,
 )
 from PySide6.QtWidgets import QFileSystemModel, QFileIconProvider
@@ -121,6 +121,9 @@ class FavoritesModel(QAbstractListModel):
 
 class ExplorerModel(QFileSystemModel):
     HEADERS = ["Name", "Änderungsdatum", "Größe", "Art"]
+    # Interne QFileSystemModel-Spalten in dieser Runtime:
+    # 0=Name, 1=Größe, 2=Datum, 3=Art
+    _SORT_COLUMN_MAP = {1: 2, 2: 1, 3: 3}
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -135,6 +138,11 @@ class ExplorerModel(QFileSystemModel):
             if 0 <= section < len(self.HEADERS):
                 return self.HEADERS[section]
         return super().headerData(section, orientation, role)
+
+    def sort(self, column: int, order: Qt.SortOrder = Qt.SortOrder.AscendingOrder):
+        """Mappt sichtbare Spalten auf QFileSystemModel-interne Sortierspalten."""
+        internal_column = self._SORT_COLUMN_MAP.get(column, column)
+        super().sort(internal_column, order)
 
     def data(self, index: QModelIndex, role=Qt.DisplayRole):
         if not index.isValid():
@@ -180,3 +188,97 @@ class ExplorerModel(QFileSystemModel):
             if n < 1024 or unit == "TB":
                 return f"{n:.1f} {unit}"
         return f"{n:.1f} TB"
+
+
+class ExplorerProxyModel(QSortFilterProxyModel):
+    """Proxy für benutzerdefinierte Sortierung (u. a. Art nach Dateiendung)."""
+
+    directoryLoaded = Signal(str)
+
+    def __init__(self, source: ExplorerModel, parent=None):
+        super().__init__(parent)
+        self.setSourceModel(source)
+        self.setDynamicSortFilter(True)
+        self.setSortCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._folders_always_top = True
+        source.directoryLoaded.connect(self.directoryLoaded.emit)
+
+    def set_folders_always_top(self, enabled: bool):
+        self._folders_always_top = bool(enabled)
+        self.invalidate()
+
+    def folders_always_top(self) -> bool:
+        return self._folders_always_top
+
+    def source_model(self) -> ExplorerModel:
+        src = self.sourceModel()
+        return src  # type: ignore[return-value]
+
+    def lessThan(self, left: QModelIndex, right: QModelIndex) -> bool:
+        src = self.source_model()
+        # Qt übergibt hier bereits SOURCE-Indizes (nicht Proxy-Indizes).
+        l0 = src.fileInfo(left.siblingAtColumn(0))
+        r0 = src.fileInfo(right.siblingAtColumn(0))
+        col = left.column()
+
+        if l0.isDir() != r0.isDir():
+            # Ordner als Gruppe behandeln (nicht zwischen Dateien mischen).
+            # Optional: immer oben, unabhängig von Sortierreihenfolge.
+            if self._folders_always_top and self.sortOrder() == Qt.SortOrder.DescendingOrder:
+                return not l0.isDir()
+            return l0.isDir()
+
+        if col == 3:
+            # Art: nach Dateiendung sortieren, Ordner als "ordner" gruppieren.
+            l_key = ("ordner", l0.fileName().lower()) if l0.isDir() else (l0.suffix().lower(), l0.fileName().lower())
+            r_key = ("ordner", r0.fileName().lower()) if r0.isDir() else (r0.suffix().lower(), r0.fileName().lower())
+            return l_key < r_key
+
+        if col == 2:
+            l_size = -1 if l0.isDir() else l0.size()
+            r_size = -1 if r0.isDir() else r0.size()
+            if l_size != r_size:
+                return l_size < r_size
+            return l0.fileName().lower() < r0.fileName().lower()
+
+        if col == 1:
+            l_dt = l0.lastModified()
+            r_dt = r0.lastModified()
+            if l_dt != r_dt:
+                return l_dt < r_dt
+            return l0.fileName().lower() < r0.fileName().lower()
+
+        return super().lessThan(left, right)
+
+    # Delegate-Methoden, damit der bestehende Browser-Code weiter funktioniert.
+    def setRootPath(self, path: str):
+        return self.source_model().setRootPath(path)
+
+    def filePath(self, index: QModelIndex) -> str:
+        src = self.source_model()
+        if index.model() is src:
+            return src.filePath(index)
+        return src.filePath(self.mapToSource(index))
+
+    def fileInfo(self, index: QModelIndex) -> QFileInfo:
+        src = self.source_model()
+        if index.model() is src:
+            return src.fileInfo(index)
+        return src.fileInfo(self.mapToSource(index))
+
+    def index(self, *args):
+        if len(args) == 1 and isinstance(args[0], str):
+            return self.mapFromSource(self.source_model().index(args[0]))
+        return super().index(*args)
+
+    def setFilter(self, filters):
+        return self.source_model().setFilter(filters)
+
+    def filter(self):
+        return self.source_model().filter()
+
+    def setNameFilters(self, filters):
+        return self.source_model().setNameFilters(filters)
+
+    def setNameFilterDisables(self, b: bool):
+        return self.source_model().setNameFilterDisables(b)
