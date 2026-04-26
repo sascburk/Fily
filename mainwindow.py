@@ -623,6 +623,8 @@ class MainWindow(QMainWindow):
         browser = tw.widget(idx)
         if isinstance(browser, FileBrowser):
             self._path_changed(browser.current_path)
+            if hasattr(self, "_a_show_hidden"):
+                self._a_show_hidden.setChecked(browser.show_hidden())
             if hasattr(self, "_a_folders_top"):
                 self._a_folders_top.setChecked(browser.model.folders_always_top())
 
@@ -664,6 +666,10 @@ class MainWindow(QMainWindow):
                 QKeySequence("Meta+Backspace"),
                 lambda: self.current_browser and self.current_browser._delete(),
             ))
+            win_pairs.append((
+                QKeySequence("Meta+Shift+Period"),
+                lambda: self.current_browser and self.current_browser._toggle_hidden(),
+            ))
         else:
             win_pairs.append((
                 QKeySequence("Ctrl+Shift+N"),
@@ -672,6 +678,10 @@ class MainWindow(QMainWindow):
             win_pairs.append((
                 QKeySequence("Ctrl+Backspace"),
                 lambda: self.current_browser and self.current_browser._delete(),
+            ))
+            win_pairs.append((
+                QKeySequence("Ctrl+Shift+H"),
+                lambda: self.current_browser and self.current_browser._toggle_hidden(),
             ))
 
         if sys.platform == "darwin":
@@ -781,13 +791,23 @@ class MainWindow(QMainWindow):
         self._a(m_view, "Split-Pane",       "F8",            self._toggle_split)
         self._a(m_view, "Vorschau",         "F9",            self._toggle_preview)
         m_view.addSeparator()
-        self._a(m_view, "Versteckte Dateien", "Ctrl+H", lambda: self.current_browser and self.current_browser._toggle_hidden())
+        _hidden_hint = "Cmd+Shift+." if sys.platform == "darwin" else "Ctrl+Shift+H"
+        self._a_show_hidden = self._a(
+            m_view,
+            f"Versteckte Dateien\t{_hidden_hint}",
+            "",
+            lambda enabled: self.current_browser and self.current_browser.set_show_hidden(enabled),
+        )
+        self._a_show_hidden.setCheckable(True)
+        self._a_show_hidden.setChecked(False)
         self._a_folders_top = self._a(m_view, "Ordner immer oben")
         self._a_folders_top.setCheckable(True)
         self._a_folders_top.setChecked(True)
         self._a_folders_top.triggered.connect(
             lambda enabled: self.current_browser and self.current_browser.set_folders_always_top(enabled)
         )
+        if self.current_browser is not None:
+            self._a_show_hidden.setChecked(self.current_browser.show_hidden())
         if self.current_browser is not None:
             self._a_folders_top.setChecked(self.current_browser.model.folders_always_top())
 

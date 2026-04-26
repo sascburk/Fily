@@ -920,7 +920,8 @@ class FileBrowser(QWidget):
             a_ref = menu.addAction("Aktualisieren\tF5")
             a_ref.triggered.connect(self.refresh)
             menu.addSeparator()
-            a_hidden = menu.addAction("Versteckte Dateien anzeigen\tCtrl+H")
+            hidden_hint = "Cmd+Shift+." if sys.platform == "darwin" else "Ctrl+Shift+H"
+            a_hidden = menu.addAction(f"Versteckte Dateien anzeigen\t{hidden_hint}")
             a_hidden.setCheckable(True)
             a_hidden.setChecked(bool(self.model.filter() & QDir.Filter.Hidden))
             a_hidden.triggered.connect(self._toggle_hidden)
@@ -944,16 +945,20 @@ class FileBrowser(QWidget):
         menu.exec(active_view.viewport().mapToGlobal(pos))
 
     def _toggle_hidden(self):
+        self.set_show_hidden(not self.show_hidden())
+
+    def show_hidden(self) -> bool:
+        return bool(self.model.filter() & QDir.Filter.Hidden)
+
+    def set_show_hidden(self, enabled: bool):
         f = self.model.filter()
-        if f & QDir.Filter.Hidden:
-            self.model.setFilter(f & ~QDir.Filter.Hidden)
-            show = False
-        else:
+        if enabled:
             self.model.setFilter(f | QDir.Filter.Hidden)
-            show = True
+        else:
+            self.model.setFilter(f & ~QDir.Filter.Hidden)
         # Zustand dauerhaft speichern
         s = QSettings(ORG_NAME, "FileBrowser")
-        s.setValue(SK_SHOW_HIDDEN, show)
+        s.setValue(SK_SHOW_HIDDEN, bool(enabled))
 
     def set_folders_always_top(self, enabled: bool):
         self.model.set_folders_always_top(enabled)

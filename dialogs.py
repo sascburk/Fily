@@ -98,6 +98,7 @@ def _shortcut_table() -> list[tuple[str, str]]:
     is_mac = sys.platform == "darwin"
     cmd    = "Cmd" if is_mac else "Ctrl"
     delete = "Cmd+Backspace" if is_mac else "Delete / Ctrl+Backspace"
+    hidden = "Cmd+Shift+." if is_mac else "Ctrl+Shift+H"
 
     tab_next = "Cmd+Shift+→" if is_mac else "Ctrl+Tab"
     tab_prev = "Cmd+Shift+←" if is_mac else "Ctrl+Shift+Tab"
@@ -121,7 +122,7 @@ def _shortcut_table() -> list[tuple[str, str]]:
         ("", ""),
         ("Ansicht", ""),
         ("Aktualisieren",            "F5"),
-        ("Versteckte Dateien",       f"{cmd}+H"),
+        ("Versteckte Dateien",       hidden),
         ("", ""),
         ("Auswahl", ""),
         ("Alle auswählen",           f"{cmd}+A"),

@@ -10,6 +10,7 @@ Bug B3 Fix: safe_trash() warnt vor permanentem Löschen.
 import os
 import shutil
 import sys
+import subprocess
 import zipfile
 import tarfile
 from pathlib import Path
@@ -37,6 +38,43 @@ def build_ops(src_paths: list[str], dest_dir: str) -> list[tuple[str, str]]:
     return ops
 
 
+def _windows_send_to_recycle_bin(path: str) -> bool:
+    """Fallback für Windows-Papierkorb via PowerShell/.NET.
+
+    Wird nur genutzt, wenn send2trash fehlschlägt.
+    """
+    if sys.platform != "win32":
+        return False
+    p = Path(path)
+    # Einfache Escapes für PowerShell-Stringliteral.
+    ps_path = str(p).replace("'", "''")
+    is_dir = p.is_dir()
+    ps_cmd = (
+        "Add-Type -AssemblyName Microsoft.VisualBasic;"
+        f"$p='{ps_path}';"
+        "if (Test-Path -LiteralPath $p) {"
+        + (
+            "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory("
+            "$p,'OnlyErrorDialogs','SendToRecycleBin');"
+            if is_dir
+            else
+            "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile("
+            "$p,'OnlyErrorDialogs','SendToRecycleBin');"
+        )
+        + "exit 0 } else { exit 1 }"
+    )
+    try:
+        res = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
 def safe_trash(path: str, parent=None) -> bool:
     """Legt eine Datei/Ordner in den Papierkorb.
 
@@ -54,12 +92,17 @@ def safe_trash(path: str, parent=None) -> bool:
         _send2trash(path)
         return True
     except Exception:
+        # Windows-Fallback: PowerShell/.NET Recycle Bin API.
+        if _windows_send_to_recycle_bin(path):
+            return True
+
         # Papierkorb nicht verfügbar — User fragen ob permanent löschen
         reply = QMessageBox.warning(
             parent, "Papierkorb nicht verfügbar",
             f"'{Path(path).name}' kann nicht in den Papierkorb gelegt werden.\n\n"
-            "Datei permanent löschen?",
+            "Element permanent löschen?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
         )
         if reply != QMessageBox.StandardButton.Yes:
             return False
