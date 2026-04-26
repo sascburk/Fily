@@ -753,7 +753,11 @@ class MainWindow(QMainWindow):
                 callback=lambda: self.current_browser and self.fav_panel.add_current(
                     self.current_browser.current_path))
         m.addSeparator()
-        self._a(m, "Beenden", "Ctrl+Q", self.close)
+        quit_action = self._a(m, "Beenden", "Ctrl+Q", self.close)
+        if sys.platform == "darwin":
+            # Standard-Quit-Shortcut erzwingt ⌘Q im macOS-Menü.
+            quit_action.setShortcut(QKeySequence.StandardKey.Quit)
+            quit_action.setMenuRole(QAction.MenuRole.QuitRole)
 
         # ── Bearbeiten ────────────────────────────────────────────────────────
         m = mb.addMenu("Bearbeiten")

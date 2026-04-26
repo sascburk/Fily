@@ -12,7 +12,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListView, QFrame, QToolButton, QSizePolicy,
-    QMenu, QInputDialog, QFileDialog, QAbstractItemView, QLabel, QColorDialog,
+    QMenu, QInputDialog, QFileDialog, QAbstractItemView, QLabel, QColorDialog, QMessageBox,
 )
 from PySide6.QtCore import Qt, QModelIndex, QEvent, Signal, QSize, QItemSelectionModel, QSettings, QSortFilterProxyModel
 from PySide6.QtGui import (
@@ -21,6 +21,7 @@ from PySide6.QtGui import (
 
 from config import ORG_NAME, SK_FAV_BG_COLOR, SK_FAV_TRASH_REMOVED
 from models import FavoritesModel
+from fileops import empty_trash
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -421,8 +422,27 @@ class FavoritesPanel(QWidget):
         if not self.btn_trash.isVisible():
             return
         menu = QMenu(self)
+        empty_action = menu.addAction("Papierkorb leeren …")
+        menu.addSeparator()
         remove_action = menu.addAction("Aus Favoriten entfernen")
         action = menu.exec(self.btn_trash.mapToGlobal(pos))
+        if action == empty_action:
+            reply = QMessageBox.question(
+                self,
+                "Papierkorb leeren",
+                "Möchtest du den Papierkorb wirklich leeren?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                ok, msg = empty_trash()
+                if ok:
+                    QMessageBox.information(self, "Papierkorb", "Papierkorb wurde geleert.")
+                else:
+                    QMessageBox.warning(
+                        self, "Fehler", f"Papierkorb konnte nicht geleert werden:\n{msg}"
+                    )
+            return
         if action == remove_action:
             for row in range(self.model.rowCount()):
                 if self.model.path_at(row) == self._trash_path:

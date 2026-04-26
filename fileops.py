@@ -13,7 +13,9 @@ import sys
 import subprocess
 import zipfile
 import tarfile
+from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 from send2trash import send2trash as _send2trash
 
@@ -75,6 +77,53 @@ def _windows_send_to_recycle_bin(path: str) -> bool:
         return False
 
 
+def _linux_send_to_trash(path: str) -> bool:
+    """Fallback für Linux gemäß Freedesktop-Trash-Spezifikation."""
+    if not sys.platform.startswith("linux"):
+        return False
+
+    src = Path(path)
+    if not src.exists():
+        return False
+
+    trash_base = Path.home() / ".local" / "share" / "Trash"
+    files_dir = trash_base / "files"
+    info_dir = trash_base / "info"
+    files_dir.mkdir(parents=True, exist_ok=True)
+    info_dir.mkdir(parents=True, exist_ok=True)
+
+    stem = src.name
+    dst = files_dir / stem
+    i = 1
+    while dst.exists():
+        dst = files_dir / f"{stem}.{i}"
+        i += 1
+
+    deleted_at = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    info_path = info_dir / f"{dst.name}.trashinfo"
+    info_content = (
+        "[Trash Info]\n"
+        f"Path={quote(str(src.resolve()))}\n"
+        f"DeletionDate={deleted_at}\n"
+    )
+    try:
+        shutil.move(str(src), str(dst))
+        info_path.write_text(info_content, encoding="utf-8")
+        return True
+    except Exception:
+        try:
+            if dst.exists():
+                if dst.is_dir():
+                    shutil.rmtree(dst)
+                else:
+                    dst.unlink()
+            if info_path.exists():
+                info_path.unlink()
+        except Exception:
+            pass
+        return False
+
+
 def safe_trash(path: str, parent=None) -> bool:
     """Legt eine Datei/Ordner in den Papierkorb.
 
@@ -94,6 +143,9 @@ def safe_trash(path: str, parent=None) -> bool:
     except Exception:
         # Windows-Fallback: PowerShell/.NET Recycle Bin API.
         if _windows_send_to_recycle_bin(path):
+            return True
+        # Linux-Fallback: Freedesktop Trash manuell.
+        if _linux_send_to_trash(path):
             return True
 
         # Papierkorb nicht verfügbar — User fragen ob permanent löschen
@@ -115,6 +167,55 @@ def safe_trash(path: str, parent=None) -> bool:
         except OSError as e:
             QMessageBox.warning(parent, "Fehler", f"Löschen fehlgeschlagen:\n{e}")
             return False
+
+
+def _clear_dir_contents(path: Path) -> None:
+    """Löscht den kompletten Inhalt eines Verzeichnisses (nicht das Verzeichnis selbst)."""
+    if not path.exists():
+        return
+    for entry in path.iterdir():
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink()
+
+
+def empty_trash() -> tuple[bool, str]:
+    """Leert den systemnahen Papierkorb der aktuellen Plattform.
+
+    Returns:
+        (ok, message) wobei message bei Fehlern einen Grund enthält.
+    """
+    try:
+        if sys.platform == "win32":
+            res = subprocess.run(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    "Clear-RecycleBin -Force -ErrorAction Stop",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            if res.returncode != 0:
+                msg = (res.stderr or res.stdout or "Unbekannter Fehler").strip()
+                return False, msg
+            return True, ""
+
+        if sys.platform == "darwin":
+            _clear_dir_contents(Path.home() / ".Trash")
+            return True, ""
+
+        # Linux/Freedesktop-Spezifikation
+        trash_base = Path.home() / ".local" / "share" / "Trash"
+        _clear_dir_contents(trash_base / "files")
+        _clear_dir_contents(trash_base / "info")
+        return True, ""
+    except Exception as e:
+        return False, str(e)
 
 
 def reveal_in_filemanager(path: str):
