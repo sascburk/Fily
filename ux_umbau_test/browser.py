@@ -139,8 +139,7 @@ class FileBrowser(QWidget):
         # Versteckte-Dateien-Zustand aus QSettings wiederherstellen
         s = QSettings(ORG_NAME, "FileBrowser")
         if s.value(SK_SHOW_HIDDEN, False, type=bool):
-            f = self.model.filter()
-            self.model.setFilter((f | QDir.Filter.Hidden) & ~QDir.Filter.NoDotAndDotDot)
+            self.model.setFilter(self.model.filter() | QDir.Filter.Hidden)
         self.model.set_folders_always_top(s.value(SK_FOLDERS_TOP, True, type=bool))
 
         self.tree = ExplorerTreeView()
@@ -293,9 +292,6 @@ class FileBrowser(QWidget):
             sc_new = QShortcut(QKeySequence(seq), self)
             sc_new.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
             sc_new.activated.connect(self._open_sel_in_new_tab)
-
-        # Papierkorb: Cmd+Backspace (macOS) bzw. Delete / Ctrl+Backspace (Win/Linux)
-        # liegen in MainWindow (WindowShortcut), damit es auch aus der Favoritenleiste geht.
 
     # ── Navigation ────────────────────────────────────────────────────────────
     def navigate(self, path: str):
@@ -787,22 +783,6 @@ class FileBrowser(QWidget):
             except OSError as e:
                 QMessageBox.warning(self, "Fehler", f"Ordner konnte nicht erstellt werden:\n{e}")
 
-    def _new_file(self):
-        name, ok = QInputDialog.getText(
-            self, "Neue Datei", "Dateiname:", text="Neue Datei.txt"
-        )
-        if not ok or not name:
-            return
-        path = os.path.join(self._cur, name)
-        if os.path.exists(path):
-            QMessageBox.warning(self, "Fehler", f"Datei existiert bereits:\n{path}")
-            return
-        try:
-            Path(path).touch(exist_ok=False)
-            self.refresh()
-        except OSError as e:
-            QMessageBox.warning(self, "Fehler", f"Datei konnte nicht erstellt werden:\n{e}")
-
     # ── Suche (Groß-/Kleinschreibung ignorieren) ──────────────────────────────
     def _on_search(self, text: str):
         """Startet eine rekursive Suche oder setzt den normalen Modus wieder her."""
@@ -928,8 +908,7 @@ class FileBrowser(QWidget):
             a_ref = menu.addAction("Aktualisieren\tF5")
             a_ref.triggered.connect(self.refresh)
             menu.addSeparator()
-            hidden_hint = "Cmd+Shift+H" if sys.platform == "darwin" else "Ctrl+H"
-            a_hidden = menu.addAction(f"Versteckte Dateien\t{hidden_hint}")
+            a_hidden = menu.addAction("Versteckte Dateien anzeigen\tCtrl+H")
             a_hidden.setCheckable(True)
             a_hidden.setChecked(bool(self.model.filter() & QDir.Filter.Hidden))
             a_hidden.triggered.connect(self._toggle_hidden)
@@ -953,34 +932,22 @@ class FileBrowser(QWidget):
         menu.exec(active_view.viewport().mapToGlobal(pos))
 
     def _toggle_hidden(self):
-        self.set_show_hidden(not self.show_hidden())
-
-    def show_hidden(self) -> bool:
-        return bool(self.model.filter() & QDir.Filter.Hidden)
-
-    def set_show_hidden(self, enabled: bool):
         f = self.model.filter()
-        if enabled:
-            self.model.setFilter((f | QDir.Filter.Hidden) & ~QDir.Filter.NoDotAndDotDot)
+        if f & QDir.Filter.Hidden:
+            self.model.setFilter(f & ~QDir.Filter.Hidden)
+            show = False
         else:
-            self.model.setFilter((f & ~QDir.Filter.Hidden) | QDir.Filter.NoDotAndDotDot)
+            self.model.setFilter(f | QDir.Filter.Hidden)
+            show = True
         # Zustand dauerhaft speichern
         s = QSettings(ORG_NAME, "FileBrowser")
-        s.setValue(SK_SHOW_HIDDEN, bool(enabled))
+        s.setValue(SK_SHOW_HIDDEN, show)
 
     def set_folders_always_top(self, enabled: bool):
         self.model.set_folders_always_top(enabled)
         QSettings(ORG_NAME, "FileBrowser").setValue(SK_FOLDERS_TOP, bool(enabled))
         hdr = self.tree.header()
         self.tree.sortByColumn(hdr.sortIndicatorSection(), hdr.sortIndicatorOrder())
-
-    def sort_by_modified_date(self, newest_first: bool = True):
-        """Sortiert nach Änderungsdatum (wirkt auf Liste und Icon-Ansicht)."""
-        order = (
-            Qt.SortOrder.DescendingOrder if newest_first
-            else Qt.SortOrder.AscendingOrder
-        )
-        self.tree.sortByColumn(1, order)
 
     def _properties(self, path: str):
         fi = QFileInfo(path)
