@@ -147,9 +147,22 @@ def safe_trash(path: str, parent=None) -> bool:
         True wenn gelöscht (Papierkorb oder permanent), False wenn abgebrochen.
     """
     log_line_force(f"trash request: path='{path}' platform='{sys.platform}'")
+    # Linux: Paket-Default ist GIO (plat_gio). Gio.File.trash() kann ohne Fehler durchlaufen,
+    # ohne dass die Dateien unter ~/.local/share/Trash/files erscheinen (Desktop-Papierkorb leer).
+    # Freedesktop-Implementierung (plat_other) legt zuverlässig im XDG-Papierkorb ab.
+    if sys.platform.startswith("linux"):
+        try:
+            from send2trash.plat_other import send2trash as _trash_freedesktop
+
+            _trash_freedesktop(path)
+            log_line(f"Linux trash via plat_other (XDG) succeeded for '{path}'")
+            return True
+        except Exception as e:
+            log_line(f"Linux plat_other trash failed for '{path}': {e!r}")
+
     try:
         _send2trash(path)
-        log_line(f"send2trash succeeded for '{path}'")
+        log_line(f"send2trash (gio/mac/win) succeeded for '{path}'")
         return True
     except Exception as e:
         log_line(f"send2trash failed for '{path}': {e!r}")
