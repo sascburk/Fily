@@ -8,7 +8,7 @@ from pathlib import Path
 # ── App-Identität ─────────────────────────────────────────────────────────────
 APP_NAME   = "Fily"
 ORG_NAME   = "Fily"
-VERSION    = "2.0.8"
+VERSION    = "2.0.9"
 
 # URLs
 BUYMEACOFFEE_URL = "https://buymeacoffee.com/buged86o"
