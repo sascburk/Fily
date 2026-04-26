@@ -65,9 +65,16 @@ class BrowserToolbar(QWidget):
         self.btn_view.clicked.connect(self.view_toggle)
         self.btn_new_tab.clicked.connect(self.new_tab_clicked)
 
+        # Linke Button-Gruppe bleibt immer kompakt zusammen.
+        self._left_group = QWidget()
+        left_layout = QHBoxLayout(self._left_group)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(4)
         for btn in (self.btn_back, self.btn_forward, self.btn_up,
                     self.btn_reload, self.btn_new_dir, self.btn_view):
-            layout.addWidget(btn)
+            left_layout.addWidget(btn)
+        self._left_group.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        layout.addWidget(self._left_group, 0)
 
         self._drag_area = QWidget()
         self._drag_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
@@ -78,7 +85,12 @@ class BrowserToolbar(QWidget):
 
     def set_drag_area_enabled(self, enabled: bool):
         self._drag_area_enabled = bool(enabled)
-        self._drag_area.setVisible(self._drag_area_enabled)
+        # macOS: freie Drag-Fläche zwischen linker Gruppe und "+".
+        # Andere Plattformen: nur passiver Spacer für rechte Ausrichtung.
+        if self._drag_area_enabled:
+            self._drag_area.setCursor(Qt.CursorShape.OpenHandCursor)
+        else:
+            self._drag_area.setCursor(Qt.CursorShape.ArrowCursor)
 
     def _btn(self, tip: str, std_icon) -> QToolButton:
         """Erstellt einen kompakten Icon-Button mit Qt-Standard-Icon."""

@@ -23,21 +23,36 @@ from logger import log_line
 def _linux_is_dark() -> bool:
     """Erkennt Dark Mode auf Linux.
 
-    Reihenfolge: gsettings → GTK-Config-Dateien → dconf (letzter Fallback).
-    Bug B6 Fix: dconf-Binärparsing ist jetzt letzter Fallback mit Try/Except.
-    Wenn gsettings antwortet (kein Fehler), gilt sein Ergebnis — egal ob dark
-    oder nicht; weitere Methoden werden dann nicht mehr geprüft.
+    Reihenfolge: gsettings (color-scheme, gtk-theme) → GTK-Config-Dateien
+    → dconf (letzter Fallback).
+    Hinweis: GNOME/Fedora liefert bei color-scheme oft "default". Das ist
+    nicht aussagekräftig genug; dann werden weitere Quellen geprüft.
     """
-    # Methode 1: GNOME gsettings (zuverlässigste Methode)
+    # Methode 1a: GNOME color-scheme
     try:
         out = subprocess.check_output(
             ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
             stderr=subprocess.DEVNULL, timeout=2,
         ).decode().strip().strip("'\"")
-        # gsettings hat geantwortet → Ergebnis ist definitiv, kein weiteres Prüfen
-        return "dark" in out.lower()
+        low = out.lower()
+        if "prefer-dark" in low:
+            return True
+        if "prefer-light" in low:
+            return False
+        # z. B. "default" → nicht eindeutig, nächste Methode prüfen
     except Exception:
         pass  # gsettings nicht verfügbar → nächste Methode
+
+    # Methode 1b: GNOME gtk-theme (z. B. "Adwaita-dark")
+    try:
+        theme = subprocess.check_output(
+            ["gsettings", "get", "org.gnome.desktop.interface", "gtk-theme"],
+            stderr=subprocess.DEVNULL, timeout=2,
+        ).decode().strip().strip("'\"").lower()
+        if theme.endswith("-dark") or "dark" in theme:
+            return True
+    except Exception:
+        pass
 
     # Methode 2: GTK-Config-Dateien (~/.config/gtk-4.0 oder gtk-3.0)
     for conf in [
@@ -48,7 +63,9 @@ def _linux_is_dark() -> bool:
             text = conf.read_text(encoding="utf-8").lower()
             if ("gtk-application-prefer-dark-theme=1" in text or
                     "gtk-application-prefer-dark-theme=true" in text or
-                    "color-scheme=prefer-dark" in text):
+                    "color-scheme=prefer-dark" in text or
+                    "gtk-theme-name=adwaita-dark" in text or
+                    "gtk-theme=adwaita-dark" in text):
                 return True
         except Exception:
             pass
