@@ -921,7 +921,7 @@ class FileBrowser(QWidget):
             a_ref.triggered.connect(self.refresh)
             menu.addSeparator()
             hidden_hint = "Cmd+Shift+." if sys.platform == "darwin" else "Ctrl+Shift+H"
-            a_hidden = menu.addAction(f"Versteckte Dateien anzeigen\t{hidden_hint}")
+            a_hidden = menu.addAction(f"Versteckte Dateien\t{hidden_hint}")
             a_hidden.setCheckable(True)
             a_hidden.setChecked(bool(self.model.filter() & QDir.Filter.Hidden))
             a_hidden.triggered.connect(self._toggle_hidden)
