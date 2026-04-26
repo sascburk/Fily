@@ -12,7 +12,7 @@ from pathlib import Path
 import traceback
 
 from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QIcon, QColor, QPalette
 
 from config import APP_NAME, ORG_NAME, SK_FDA_HINT, asset_path
@@ -188,6 +188,12 @@ def main():
             # Fusion-Palette nach dem Start wieder überschreiben.
             os.environ.pop("QT_QPA_PLATFORMTHEME", None)
             os.environ["QT_STYLE_OVERRIDE"] = "Fusion"
+
+        # Menüleiste komplett von Qt zeichnen (vor QApplication zwingend).
+        # Verhindert unter Ubuntu/GNOME/Wayland oft: Menü klappt auf und
+        # schließt beim Loslassen sofort + erster Eintrag wird ausgelöst.
+        os.environ.setdefault("QT_XCB_NO_NATIVE_MENUBAR", "1")
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_DontUseNativeMenuBar, True)
 
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
