@@ -42,14 +42,10 @@ def build_ops(src_paths: list[str], dest_dir: str) -> list[tuple[str, str]]:
 
 
 def _windows_send_to_recycle_bin(path: str) -> bool:
-    """Fallback für Windows-Papierkorb via PowerShell/.NET.
-
-    Wird nur genutzt, wenn send2trash fehlschlägt.
-    """
+    """Fallback für Windows-Papierkorb via PowerShell/.NET."""
     if sys.platform != "win32":
         return False
     p = Path(path)
-    # Einfache Escapes für PowerShell-Stringliteral.
     ps_path = str(p).replace("'", "''")
     is_dir = p.is_dir()
     ps_cmd = (
@@ -153,22 +149,18 @@ def safe_trash(path: str, parent=None) -> bool:
         return True
     except Exception as e:
         log_line(f"send2trash failed for '{path}': {e!r}")
-        # Windows-Fallback: PowerShell/.NET Recycle Bin API.
         if _windows_send_to_recycle_bin(path):
             log_line(f"Windows trash fallback succeeded for '{path}'")
             return True
-        # Linux-Fallback: Freedesktop Trash manuell.
         if _linux_send_to_trash(path):
             log_line(f"Linux trash fallback succeeded for '{path}'")
             return True
-
         # Papierkorb nicht verfügbar — User fragen ob permanent löschen
         reply = QMessageBox.warning(
             parent, "Papierkorb nicht verfügbar",
             f"'{Path(path).name}' kann nicht in den Papierkorb gelegt werden.\n\n"
-            "Element permanent löschen?",
+            "Datei permanent löschen?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
         )
         if reply != QMessageBox.StandardButton.Yes:
             log_line("permanent delete cancelled by user")
@@ -184,55 +176,6 @@ def safe_trash(path: str, parent=None) -> bool:
             log_line_force(f"permanent delete failed for '{path}': {e!r}")
             QMessageBox.warning(parent, "Fehler", f"Löschen fehlgeschlagen:\n{e}")
             return False
-
-
-def _clear_dir_contents(path: Path) -> None:
-    """Löscht den kompletten Inhalt eines Verzeichnisses (nicht das Verzeichnis selbst)."""
-    if not path.exists():
-        return
-    for entry in path.iterdir():
-        if entry.is_dir() and not entry.is_symlink():
-            shutil.rmtree(entry)
-        else:
-            entry.unlink()
-
-
-def empty_trash() -> tuple[bool, str]:
-    """Leert den systemnahen Papierkorb der aktuellen Plattform.
-
-    Returns:
-        (ok, message) wobei message bei Fehlern einen Grund enthält.
-    """
-    try:
-        if sys.platform == "win32":
-            res = subprocess.run(
-                [
-                    "powershell",
-                    "-NoProfile",
-                    "-NonInteractive",
-                    "-Command",
-                    "Clear-RecycleBin -Force -ErrorAction Stop",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=20,
-            )
-            if res.returncode != 0:
-                msg = (res.stderr or res.stdout or "Unbekannter Fehler").strip()
-                return False, msg
-            return True, ""
-
-        if sys.platform == "darwin":
-            _clear_dir_contents(Path.home() / ".Trash")
-            return True, ""
-
-        # Linux/Freedesktop-Spezifikation
-        trash_base = Path.home() / ".local" / "share" / "Trash"
-        _clear_dir_contents(trash_base / "files")
-        _clear_dir_contents(trash_base / "info")
-        return True, ""
-    except Exception as e:
-        return False, str(e)
 
 
 def reveal_in_filemanager(path: str):
