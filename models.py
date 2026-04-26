@@ -3,15 +3,29 @@ models.py — FavoritesModel (QAbstractListModel) und ExplorerModel (QFileSystem
 """
 import json
 import os
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import (
     Qt, QModelIndex, QAbstractListModel, QDir, QFileInfo, Signal, QSortFilterProxyModel,
-    QMimeData, QUrl,
+    QMimeData, QUrl, QSettings,
 )
 from PySide6.QtWidgets import QFileSystemModel, QFileIconProvider
 
-from config import CONFIG_DIR, FAV_FILE, DEFAULT_FAVORITES
+from config import (
+    CONFIG_DIR, FAV_FILE, DEFAULT_FAVORITES, ORG_NAME, SK_FAV_TRASH_REMOVED,
+)
+
+
+def _trash_favorite() -> dict:
+    if sys.platform == "darwin":
+        path = str(Path.home() / ".Trash")
+    elif sys.platform == "win32":
+        # Explorer-Shellziel für Papierkorb unter Windows.
+        path = "shell:RecycleBinFolder"
+    else:
+        path = str(Path.home() / ".local" / "share" / "Trash" / "files")
+    return {"name": "Papierkorb", "path": path}
 
 
 class FavoritesModel(QAbstractListModel):
@@ -27,10 +41,32 @@ class FavoritesModel(QAbstractListModel):
             try:
                 with open(FAV_FILE, encoding="utf-8") as f:
                     self._favs = json.load(f)
+                self._ensure_trash_favorite()
                 return
             except Exception:
                 pass
         self._favs = list(DEFAULT_FAVORITES)
+        self._ensure_trash_favorite()
+
+    def _move_trash_to_end(self) -> bool:
+        trash_path = _trash_favorite()["path"]
+        for i, fav in enumerate(self._favs):
+            if fav.get("path") == trash_path:
+                if i == len(self._favs) - 1:
+                    return False
+                item = self._favs.pop(i)
+                self._favs.append(item)
+                return True
+        return False
+
+    def _ensure_trash_favorite(self):
+        trash = _trash_favorite()
+        trash_path = trash["path"]
+        settings = QSettings(ORG_NAME, "Favorites")
+        trash_removed = settings.value(SK_FAV_TRASH_REMOVED, False, type=bool)
+        if not trash_removed and not any(f.get("path") == trash_path for f in self._favs):
+            self._favs.append(trash)
+        self._move_trash_to_end()
 
     def save(self):
         try:
@@ -86,6 +122,7 @@ class FavoritesModel(QAbstractListModel):
         if src < dst:
             dst -= 1
         self._favs.insert(dst, item)
+        self._move_trash_to_end()
         self.layoutChanged.emit()
         self.save()
         return True
@@ -106,13 +143,20 @@ class FavoritesModel(QAbstractListModel):
         self.beginInsertRows(QModelIndex(), r, r)
         self._favs.append({"name": name, "path": path})
         self.endInsertRows()
+        if self._move_trash_to_end():
+            self.layoutChanged.emit()
+        if path == _trash_favorite()["path"]:
+            QSettings(ORG_NAME, "Favorites").setValue(SK_FAV_TRASH_REMOVED, False)
         self.save()
 
     def remove(self, row: int):
         if 0 <= row < len(self._favs):
+            removed_path = self._favs[row].get("path")
             self.beginRemoveRows(QModelIndex(), row, row)
             self._favs.pop(row)
             self.endRemoveRows()
+            if removed_path == _trash_favorite()["path"]:
+                QSettings(ORG_NAME, "Favorites").setValue(SK_FAV_TRASH_REMOVED, True)
             self.save()
 
     def path_at(self, row: int) -> str | None:

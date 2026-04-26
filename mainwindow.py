@@ -624,9 +624,27 @@ class MainWindow(QMainWindow):
         if isinstance(browser, FileBrowser):
             self._path_changed(browser.current_path)
             if hasattr(self, "_a_show_hidden"):
+                old = self._a_show_hidden.blockSignals(True)
                 self._a_show_hidden.setChecked(browser.show_hidden())
+                self._a_show_hidden.blockSignals(old)
             if hasattr(self, "_a_folders_top"):
                 self._a_folders_top.setChecked(browser.model.folders_always_top())
+
+    def _set_show_hidden(self, enabled: bool):
+        cur = self.current_browser
+        if cur is None:
+            return
+        cur.set_show_hidden(bool(enabled))
+        if hasattr(self, "_a_show_hidden"):
+            old = self._a_show_hidden.blockSignals(True)
+            self._a_show_hidden.setChecked(cur.show_hidden())
+            self._a_show_hidden.blockSignals(old)
+
+    def _toggle_show_hidden(self):
+        cur = self.current_browser
+        if cur is None:
+            return
+        self._set_show_hidden(not cur.show_hidden())
 
     def _toggle_split(self):
         """Schaltet Dual-Pane (rechte Tab-Gruppe) ein/aus (F8)."""
@@ -668,7 +686,7 @@ class MainWindow(QMainWindow):
             ))
             win_pairs.append((
                 QKeySequence("Meta+Shift+Period"),
-                lambda: self.current_browser and self.current_browser._toggle_hidden(),
+                self._toggle_show_hidden,
             ))
         else:
             win_pairs.append((
@@ -681,7 +699,7 @@ class MainWindow(QMainWindow):
             ))
             win_pairs.append((
                 QKeySequence("Ctrl+Shift+H"),
-                lambda: self.current_browser and self.current_browser._toggle_hidden(),
+                self._toggle_show_hidden,
             ))
 
         if sys.platform == "darwin":
@@ -796,7 +814,7 @@ class MainWindow(QMainWindow):
             m_view,
             f"Versteckte Dateien\t{_hidden_hint}",
             "",
-            lambda enabled: self.current_browser and self.current_browser.set_show_hidden(enabled),
+            self._set_show_hidden,
         )
         self._a_show_hidden.setCheckable(True)
         self._a_show_hidden.setChecked(False)

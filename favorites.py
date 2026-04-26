@@ -7,6 +7,7 @@ Die Seitenleiste beginnt am absoluten oberen Fensterrand.
 """
 import os
 import sys
+import subprocess
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -272,6 +273,12 @@ class FavoritesPanel(QWidget):
 
     def _clicked(self, index: QModelIndex):
         path = self.model.path_at(index.row())
+        if sys.platform == "win32" and path == "shell:RecycleBinFolder":
+            try:
+                subprocess.run(["explorer", "shell:RecycleBinFolder"], check=False)
+            except Exception:
+                pass
+            return
         if path and os.path.isdir(path):
             self.navigate.emit(path)
 
