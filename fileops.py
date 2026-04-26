@@ -20,6 +20,7 @@ from urllib.parse import quote
 from send2trash import send2trash as _send2trash
 
 from PySide6.QtWidgets import QMessageBox
+from logger import log_line
 
 
 def build_ops(src_paths: list[str], dest_dir: str) -> list[tuple[str, str]]:
@@ -140,12 +141,15 @@ def safe_trash(path: str, parent=None) -> bool:
     try:
         _send2trash(path)
         return True
-    except Exception:
+    except Exception as e:
+        log_line(f"send2trash failed for '{path}': {e!r}")
         # Windows-Fallback: PowerShell/.NET Recycle Bin API.
         if _windows_send_to_recycle_bin(path):
+            log_line(f"Windows trash fallback succeeded for '{path}'")
             return True
         # Linux-Fallback: Freedesktop Trash manuell.
         if _linux_send_to_trash(path):
+            log_line(f"Linux trash fallback succeeded for '{path}'")
             return True
 
         # Papierkorb nicht verfügbar — User fragen ob permanent löschen

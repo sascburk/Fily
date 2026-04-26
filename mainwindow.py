@@ -9,7 +9,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QSplitter, QTabWidget, QTabBar,
-    QToolButton, QMenu, QApplication,
+    QToolButton, QMenu, QApplication, QCheckBox, QPushButton, QWidgetAction, QSizePolicy,
 )
 from PySide6.QtCore import Qt, QSettings, Signal, QPoint, QUrl, QTimer, QRectF, QEvent
 from PySide6.QtGui import QAction, QKeySequence, QDesktopServices, QShortcut, QRegion, QPainterPath
@@ -23,6 +23,7 @@ from browser import FileBrowser
 from favorites import FavoritesPanel
 from dialogs import ShortcutsDialog, AboutDialog, _CtrlTabFilter
 from preview import PreviewDrawer
+from logger import LOG_FILE, is_debug_enabled, set_debug_enabled
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -823,6 +824,8 @@ class MainWindow(QMainWindow):
         self._a(m, f"Über {APP_NAME} …", callback=self._open_about)
         self._a(m, "Tastaturkürzel …",   callback=lambda: ShortcutsDialog(self).exec())
         m.addSeparator()
+        self._add_debug_controls_to_help_menu(m)
+        m.addSeparator()
         self._a(m, "☕  Buy me a coffee", callback=lambda: QDesktopServices.openUrl(QUrl(BUYMEACOFFEE_URL)))
         self._a(m, "GitHub", callback=lambda: QDesktopServices.openUrl(QUrl(GITHUB_URL)))
 
@@ -844,6 +847,38 @@ class MainWindow(QMainWindow):
 
     def _open_about(self):
         AboutDialog(self).exec()
+
+    def _add_debug_controls_to_help_menu(self, menu: QMenu) -> None:
+        row = QWidget(menu)
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setSpacing(8)
+
+        cb = QCheckBox("Debug mode", row)
+        cb.setChecked(is_debug_enabled())
+        cb.toggled.connect(set_debug_enabled)
+
+        btn = QPushButton("Log öffnen", row)
+        btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        btn.clicked.connect(self._open_log_file)
+
+        layout.addWidget(cb)
+        layout.addStretch(1)
+        layout.addWidget(btn)
+
+        act = QWidgetAction(menu)
+        act.setDefaultWidget(row)
+        menu.addAction(act)
+
+    @staticmethod
+    def _open_log_file() -> None:
+        try:
+            LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+            if not LOG_FILE.exists():
+                LOG_FILE.write_text("", encoding="utf-8")
+        except Exception:
+            pass
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(LOG_FILE)))
 
     # ── Slots ─────────────────────────────────────────────────────────────────
     def _path_changed(self, path: str):

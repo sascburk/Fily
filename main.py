@@ -17,7 +17,7 @@ from PySide6.QtGui import QIcon, QColor, QPalette
 
 from config import APP_NAME, ORG_NAME, SK_FDA_HINT, SK_FDA_FIRST_LAUNCH_DONE, asset_path
 from mainwindow import MainWindow
-from logger import log_line
+from logger import log_line_force
 
 
 def _linux_is_dark() -> bool:
@@ -182,7 +182,7 @@ def _macos_show_fda_dialog(parent=None) -> None:
 
 def main():
     def _global_excepthook(exc_type, exc, tb):
-        log_line("UNCAUGHT EXCEPTION:\n" + "".join(traceback.format_exception(exc_type, exc, tb)).strip())
+        log_line_force("UNCAUGHT EXCEPTION:\n" + "".join(traceback.format_exception(exc_type, exc, tb)).strip())
         sys.__excepthook__(exc_type, exc, tb)
 
     sys.excepthook = _global_excepthook
