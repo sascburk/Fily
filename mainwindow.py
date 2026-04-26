@@ -703,6 +703,10 @@ class MainWindow(QMainWindow):
 
     def _build_menu(self):
         mb = self.menuBar()
+        if sys.platform.startswith("linux"):
+            # Verhindert Probleme mit globaler Menü-Integration (z. B. sofortiges
+            # Auslösen des ersten Menüeintrags beim Öffnen auf einigen Distros).
+            mb.setNativeMenuBar(False)
 
         # ── Datei ─────────────────────────────────────────────────────────────
         m = mb.addMenu("Datei")
