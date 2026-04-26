@@ -3,7 +3,7 @@
 #
 # macOS:   → dist/Fily.app  (BUNDLE, kein Terminal, .icns-Icon)
 # Windows: → dist/Fily.exe  (EXE, kein Terminal, .ico-Icon)
-# Linux:   → dist/fily      (EXE, kein Terminal)
+# Linux:   → dist/Fily      (EXE, kein Terminal; Name wie in EXE(..., name='Fily'))
 
 import sys
 

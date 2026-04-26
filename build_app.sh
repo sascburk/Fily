@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# Fily — Build-Script
-# Erstellt eine macOS .app mit PyInstaller
+# Fily — Build-Script (PyInstaller)
+#
+# Ausgabe plattformabhängig (siehe fily_app.spec):
+#   • macOS:   dist/Fily.app
+#   • Linux:   dist/Fily   (ausführbare Datei)
+#   • Windows: dist/Fily.exe
 #
 # Voraussetzungen:
-#   • Python 3.11+ (empfohlen: via pyenv oder Homebrew)
-#   • Homebrew (optional, für pyenv)
+#   • Python 3.11+ (venv empfohlen)
+#   • macOS: optional Homebrew/pyenv
 #
 # Verwendung:
 #   chmod +x build_app.sh
@@ -36,30 +40,78 @@ pip install --upgrade pip --quiet
 pip install -r requirements.txt --quiet
 
 # ── 3. Alte Build-Artefakte aufräumen ─────────────────────────────────────────
+if [ -d dist ] && [ -n "$(ls -A dist 2>/dev/null)" ]; then
+    echo "▶ Im Ordner „dist“ liegen bereits Dateien oder Unterordner:"
+    ls -la dist
+    echo ""
+    read -r -p "Diese löschen und neu bauen? [j/N] " _dist_ans
+    if [[ ! "$_dist_ans" =~ ^[jJ]$ ]]; then
+        echo "Abgebrochen (dist unverändert)."
+        exit 0
+    fi
+fi
 echo "▶ Räume alte Build-Artefakte auf …"
 rm -rf build dist
 
 # ── 4. PyInstaller ausführen ──────────────────────────────────────────────────
-echo "▶ Baue .app mit PyInstaller …"
+case "$(uname -s)" in
+    Darwin) echo "▶ Baue macOS-Bundle mit PyInstaller …" ;;
+    Linux)  echo "▶ Baue Linux-Binary mit PyInstaller …" ;;
+    MINGW*|MSYS*|CYGWIN*) echo "▶ Baue Windows-EXE mit PyInstaller …" ;;
+    *)      echo "▶ Baue mit PyInstaller …" ;;
+esac
 pyinstaller fily_app.spec
 
-# ── 5. Ergebnis prüfen ────────────────────────────────────────────────────────
-APP="dist/Fily.app"
-if [ -d "$APP" ]; then
+# ── 5. Ergebnis prüfen (Spec liefert je nach OS unterschiedliche Artefakte) ───
+ARTIFACT=""
+HINT=""
+case "$(uname -s)" in
+    Darwin)
+        ARTIFACT="dist/Fily.app"
+        if [ -d "$ARTIFACT" ]; then
+            HINT="Zum Installieren: cp -R \"$ARTIFACT\" /Applications/"
+        fi
+        ;;
+    Linux)
+        ARTIFACT="dist/Fily"
+        if [ -f "$ARTIFACT" ]; then
+            HINT="Starten: \"$SCRIPT_DIR/$ARTIFACT\""
+        fi
+        ;;
+    MINGW*|MSYS*|CYGWIN*)
+        ARTIFACT="dist/Fily.exe"
+        if [ -f "$ARTIFACT" ]; then
+            HINT="Starten: \"$SCRIPT_DIR/$ARTIFACT\""
+        fi
+        ;;
+    *)
+        ARTIFACT="dist/Fily.app"
+        if [ -d "$ARTIFACT" ]; then
+            HINT="macOS-Bundle: $ARTIFACT"
+        else
+            ARTIFACT="dist/Fily"
+            [ -f "$ARTIFACT" ] && HINT="Binary: $ARTIFACT"
+        fi
+        ;;
+esac
+
+if [ -n "$ARTIFACT" ] && { [ -d "$ARTIFACT" ] || [ -f "$ARTIFACT" ]; }; then
     echo ""
     echo "✅  Build erfolgreich!"
-    echo "    App:  $SCRIPT_DIR/$APP"
-    echo ""
-    echo "    Zum Installieren die .app in den Programme-Ordner ziehen:"
-    echo "    cp -R \"$APP\" /Applications/"
+    echo "    Artefakt:  $SCRIPT_DIR/$ARTIFACT"
+    [ -n "$HINT" ] && echo "    $HINT"
     echo ""
 
-    # Optional: App sofort öffnen
-    read -r -p "App jetzt starten? [j/N] " ans
+    read -r -p "Jetzt starten? [j/N] " ans
     if [[ "$ans" =~ ^[jJ]$ ]]; then
-        open "$APP"
+        case "$(uname -s)" in
+            Darwin) open "$ARTIFACT" ;;
+            Linux)  "$SCRIPT_DIR/$ARTIFACT" & ;;
+            MINGW*|MSYS*|CYGWIN*) cmd //c start "" "$ARTIFACT" ;;
+        esac
     fi
 else
-    echo "❌  Build fehlgeschlagen. Prüfe die Ausgabe oben."
+    echo "❌  Build fehlgeschlagen. Erwartet wurde u. a. dist/Fily.app (macOS) oder dist/Fily (Linux)."
+    echo "    Prüfe die PyInstaller-Ausgabe und build/*/warn-*.txt"
     exit 1
 fi
