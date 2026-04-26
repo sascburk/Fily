@@ -48,6 +48,15 @@ class _FavoritesListProxy(QSortFilterProxyModel):
         path = src.data(idx, Qt.ItemDataRole.UserRole)
         return path != self._trash_path
 
+    def dropMimeData(self, data, action, row, col, parent):
+        # Trash is always the last source row and is filtered out, so
+        # proxy row N == source row N for all visible items. Pass through
+        # directly to avoid Qt's proxy row-mapping adding an extra offset.
+        src = self.sourceModel()
+        if src is None:
+            return False
+        return src.dropMimeData(data, action, row, col, QModelIndex())
+
 
 class FavoritesPanel(QWidget):
     navigate = Signal(str)

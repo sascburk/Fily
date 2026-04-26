@@ -126,6 +126,7 @@ class FavoritesModel(QAbstractListModel):
         dst = row if row >= 0 else self.rowCount()
         if src == dst or src == dst - 1:
             return False
+        self.layoutAboutToBeChanged.emit()
         item = self._favs.pop(src)
         if src < dst:
             dst -= 1
@@ -147,12 +148,10 @@ class FavoritesModel(QAbstractListModel):
         for fav in self._favs:
             if fav["path"] == path:
                 return
-        r = self.rowCount()
-        self.beginInsertRows(QModelIndex(), r, r)
+        self.layoutAboutToBeChanged.emit()
         self._favs.append({"name": name, "path": path})
-        self.endInsertRows()
-        if self._move_trash_to_end():
-            self.layoutChanged.emit()
+        self._move_trash_to_end()
+        self.layoutChanged.emit()
         if path == _trash_favorite()["path"]:
             QSettings(ORG_NAME, "Favorites").setValue(SK_FAV_TRASH_REMOVED, False)
         self.save()
