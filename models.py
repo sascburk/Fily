@@ -10,7 +10,8 @@ from PySide6.QtCore import (
     Qt, QModelIndex, QAbstractListModel, QDir, QFileInfo, Signal, QSortFilterProxyModel,
     QMimeData, QUrl, QSettings,
 )
-from PySide6.QtWidgets import QFileSystemModel, QFileIconProvider
+from PySide6.QtGui import QColor, QBrush
+from PySide6.QtWidgets import QFileSystemModel, QFileIconProvider, QApplication, QStyle
 
 from config import (
     CONFIG_DIR, FAV_FILE, DEFAULT_FAVORITES, ORG_NAME, SK_FAV_TRASH_REMOVED,
@@ -85,6 +86,13 @@ class FavoritesModel(QAbstractListModel):
         if role == Qt.DisplayRole:
             return fav["name"]
         if role == Qt.DecorationRole:
+            if fav.get("path") == _trash_favorite()["path"]:
+                style = QApplication.style()
+                if style is not None:
+                    icon = style.standardIcon(QStyle.StandardPixmap.SP_TrashIcon)
+                    if not icon.isNull():
+                        return icon
+                return self._icons.icon(QFileIconProvider.IconType.Trashcan)
             fi = QFileInfo(fav["path"])
             return self._icons.icon(fi) if fi.exists() else self._icons.icon(QFileIconProvider.IconType.Folder)
         if role == Qt.ToolTipRole:
@@ -188,10 +196,22 @@ class ExplorerModel(QFileSystemModel):
         internal_column = self._SORT_COLUMN_MAP.get(column, column)
         super().sort(internal_column, order)
 
+    def _is_hidden_entry(self, index: QModelIndex) -> bool:
+        i0 = self.sibling(index.row(), 0, index)
+        fi = self.fileInfo(i0)
+        name = fi.fileName()
+        # '.' und '..' ebenfalls als versteckte Unix-Einträge behandeln.
+        return fi.isHidden() or name in (".", "..")
+
     def data(self, index: QModelIndex, role=Qt.DisplayRole):
         if not index.isValid():
             return None
         col = index.column()
+
+        if role == Qt.ForegroundRole and self._is_hidden_entry(index):
+            c = QColor(Qt.GlobalColor.gray)
+            c.setAlpha(140)
+            return QBrush(c)
 
         if col == 0:
             return super().data(index, role)

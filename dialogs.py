@@ -98,7 +98,7 @@ def _shortcut_table() -> list[tuple[str, str]]:
     is_mac = sys.platform == "darwin"
     cmd    = "Cmd" if is_mac else "Ctrl"
     delete = "Cmd+Backspace" if is_mac else "Delete / Ctrl+Backspace"
-    hidden = "Cmd+Shift+H" if is_mac else "Ctrl+Shift+H"
+    hidden = "Cmd+Shift+H" if is_mac else "Ctrl+H"
 
     tab_next = "Cmd+Shift+→" if is_mac else "Ctrl+Tab"
     tab_prev = "Cmd+Shift+←" if is_mac else "Ctrl+Shift+Tab"

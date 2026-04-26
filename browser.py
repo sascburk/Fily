@@ -139,7 +139,8 @@ class FileBrowser(QWidget):
         # Versteckte-Dateien-Zustand aus QSettings wiederherstellen
         s = QSettings(ORG_NAME, "FileBrowser")
         if s.value(SK_SHOW_HIDDEN, False, type=bool):
-            self.model.setFilter(self.model.filter() | QDir.Filter.Hidden)
+            f = self.model.filter()
+            self.model.setFilter((f | QDir.Filter.Hidden) & ~QDir.Filter.NoDotAndDotDot)
         self.model.set_folders_always_top(s.value(SK_FOLDERS_TOP, True, type=bool))
 
         self.tree = ExplorerTreeView()
@@ -920,7 +921,7 @@ class FileBrowser(QWidget):
             a_ref = menu.addAction("Aktualisieren\tF5")
             a_ref.triggered.connect(self.refresh)
             menu.addSeparator()
-            hidden_hint = "Cmd+Shift+H" if sys.platform == "darwin" else "Ctrl+Shift+H"
+            hidden_hint = "Cmd+Shift+H" if sys.platform == "darwin" else "Ctrl+H"
             a_hidden = menu.addAction(f"Versteckte Dateien\t{hidden_hint}")
             a_hidden.setCheckable(True)
             a_hidden.setChecked(bool(self.model.filter() & QDir.Filter.Hidden))
@@ -953,9 +954,9 @@ class FileBrowser(QWidget):
     def set_show_hidden(self, enabled: bool):
         f = self.model.filter()
         if enabled:
-            self.model.setFilter(f | QDir.Filter.Hidden)
+            self.model.setFilter((f | QDir.Filter.Hidden) & ~QDir.Filter.NoDotAndDotDot)
         else:
-            self.model.setFilter(f & ~QDir.Filter.Hidden)
+            self.model.setFilter((f & ~QDir.Filter.Hidden) | QDir.Filter.NoDotAndDotDot)
         # Zustand dauerhaft speichern
         s = QSettings(ORG_NAME, "FileBrowser")
         s.setValue(SK_SHOW_HIDDEN, bool(enabled))

@@ -14,16 +14,40 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListView, QFrame, QToolButton, QSizePolicy,
     QMenu, QInputDialog, QFileDialog, QAbstractItemView, QLabel, QColorDialog,
 )
-from PySide6.QtCore import Qt, QModelIndex, QEvent, Signal, QSize, QItemSelectionModel, QSettings
+from PySide6.QtCore import Qt, QModelIndex, QEvent, Signal, QSize, QItemSelectionModel, QSettings, QSortFilterProxyModel
 from PySide6.QtGui import (
     QPainter, QColor, QPalette, QLinearGradient, QBrush, QPen,
 )
 
-from config import ORG_NAME, SK_FAV_BG_COLOR
+from config import ORG_NAME, SK_FAV_BG_COLOR, SK_FAV_TRASH_REMOVED
 from models import FavoritesModel
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+def _trash_path() -> str:
+    if sys.platform == "darwin":
+        return str(Path.home() / ".Trash")
+    if sys.platform == "win32":
+        return "shell:RecycleBinFolder"
+    return str(Path.home() / ".local" / "share" / "Trash" / "files")
+
+
+class _FavoritesListProxy(QSortFilterProxyModel):
+    """Blendet den Papierkorb aus der scrollenden Favoritenliste aus."""
+
+    def __init__(self, trash_path: str, parent=None):
+        super().__init__(parent)
+        self._trash_path = trash_path
+
+    def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex) -> bool:
+        src = self.sourceModel()
+        if src is None:
+            return True
+        idx = src.index(source_row, 0, source_parent)
+        path = src.data(idx, Qt.ItemDataRole.UserRole)
+        return path != self._trash_path
+
+
 class FavoritesPanel(QWidget):
     navigate = Signal(str)
     add_fav  = Signal(str)
@@ -150,8 +174,24 @@ class FavoritesPanel(QWidget):
         self.view.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         self.model = FavoritesModel()
-        self.view.setModel(self.model)
+        self._trash_path = _trash_path()
+        self._view_model = _FavoritesListProxy(self._trash_path, self)
+        self._view_model.setSourceModel(self.model)
+        self.view.setModel(self._view_model)
         layout.addWidget(self.view, 1)
+
+        self.btn_trash = QToolButton()
+        self.btn_trash.setText("🗑  Papierkorb")
+        self.btn_trash.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.btn_trash.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.btn_trash.setFixedHeight(30)
+        self.btn_trash.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_trash.setStyleSheet("QToolButton { background: transparent; border: none; font-size: 12px; }")
+        self.btn_trash.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.btn_trash.customContextMenuRequested.connect(self._trash_ctx_menu)
+        self.btn_trash.clicked.connect(self._open_trash)
+        layout.addWidget(self.btn_trash)
+        self._update_trash_button_visibility()
 
         self.btn_add = QToolButton()
         self.btn_add.setText("＋  Ordner hinzufügen")
@@ -245,17 +285,17 @@ class FavoritesPanel(QWidget):
                 if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                     self._clicked(self.view.currentIndex())
                     return True
-                count = self.model.rowCount()
+                count = self._view_model.rowCount()
                 cur   = self.view.currentIndex().row()
                 if event.key() == Qt.Key.Key_Down and count and cur >= count - 1:
-                    target = self.model.index(0)
+                    target = self._view_model.index(0, 0)
                     self.view.setCurrentIndex(target)
                     self.view.selectionModel().select(
                         target, QItemSelectionModel.SelectionFlag.ClearAndSelect
                     )
                     return True
                 if event.key() == Qt.Key.Key_Up and count and cur <= 0:
-                    target = self.model.index(count - 1)
+                    target = self._view_model.index(count - 1, 0)
                     self.view.setCurrentIndex(target)
                     self.view.selectionModel().select(
                         target, QItemSelectionModel.SelectionFlag.ClearAndSelect
@@ -263,7 +303,7 @@ class FavoritesPanel(QWidget):
                     return True
             elif event.type() == QEvent.Type.FocusIn:
                 if not self.view.selectionModel().hasSelection():
-                    first = self.model.index(0)
+                    first = self._view_model.index(0, 0)
                     if first.isValid():
                         self.view.setCurrentIndex(first)
                         self.view.selectionModel().select(
@@ -272,7 +312,8 @@ class FavoritesPanel(QWidget):
         return super().eventFilter(obj, event)
 
     def _clicked(self, index: QModelIndex):
-        path = self.model.path_at(index.row())
+        src_idx = self._view_model.mapToSource(index)
+        path = self.model.path_at(src_idx.row())
         if sys.platform == "win32" and path == "shell:RecycleBinFolder":
             try:
                 subprocess.run(["explorer", "shell:RecycleBinFolder"], check=False)
@@ -299,15 +340,17 @@ class FavoritesPanel(QWidget):
         if not action:
             return
         if index.isValid():
+            src_idx = self._view_model.mapToSource(index)
             if action == rename_action:
-                old_name = self.model.data(index, Qt.ItemDataRole.DisplayRole)
+                old_name = self.model.data(src_idx, Qt.ItemDataRole.DisplayRole)
                 new_name, ok = QInputDialog.getText(
                     self, "Favorit umbenennen", "Neuer Name:", text=old_name
                 )
                 if ok and new_name:
-                    self.model.setData(index, new_name, Qt.ItemDataRole.EditRole)
+                    self.model.setData(src_idx, new_name, Qt.ItemDataRole.EditRole)
             elif action == remove_action:
-                self.model.remove(index.row())
+                self.model.remove(src_idx.row())
+                self._update_trash_button_visibility()
         if action == add_action:
             self._add_dialog()
         elif action == color_action:
@@ -345,14 +388,49 @@ class FavoritesPanel(QWidget):
         )
         if path:
             self.model.add(Path(path).name or path, path)
+            self._update_trash_button_visibility()
 
     def add_current(self, path: str):
         if path and os.path.isdir(path):
             self.model.add(Path(path).name or path, path)
+            self._update_trash_button_visibility()
 
     def highlight_path(self, path: str):
         for row in range(self.model.rowCount()):
             if self.model.path_at(row) == path:
-                self.view.setCurrentIndex(self.model.index(row))
+                src_idx = self.model.index(row)
+                proxy_idx = self._view_model.mapFromSource(src_idx)
+                if proxy_idx.isValid():
+                    self.view.setCurrentIndex(proxy_idx)
+                else:
+                    self.view.clearSelection()
                 return
         self.view.clearSelection()
+
+    def _open_trash(self):
+        if sys.platform == "win32":
+            try:
+                subprocess.run(["explorer", "shell:RecycleBinFolder"], check=False)
+            except Exception:
+                pass
+            return
+        if os.path.isdir(self._trash_path):
+            self.navigate.emit(self._trash_path)
+
+    def _trash_ctx_menu(self, pos):
+        if not self.btn_trash.isVisible():
+            return
+        menu = QMenu(self)
+        remove_action = menu.addAction("Aus Favoriten entfernen")
+        action = menu.exec(self.btn_trash.mapToGlobal(pos))
+        if action == remove_action:
+            for row in range(self.model.rowCount()):
+                if self.model.path_at(row) == self._trash_path:
+                    self.model.remove(row)
+                    QSettings(ORG_NAME, "Favorites").setValue(SK_FAV_TRASH_REMOVED, True)
+                    break
+            self._update_trash_button_visibility()
+
+    def _update_trash_button_visibility(self):
+        has_trash = any(self.model.path_at(r) == self._trash_path for r in range(self.model.rowCount()))
+        self.btn_trash.setVisible(has_trash)

@@ -184,6 +184,12 @@ class PreviewDrawer(QWidget):
         self._text_content.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self._text_content.setWordWrap(True)
         self._text_content.setTextFormat(Qt.TextFormat.PlainText)
+        # Nur lesen, aber Textauswahl/Kopieren erlauben.
+        self._text_content.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        self._text_content.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         f = self._text_content.font()
         # QFont.setFamily nimmt nur einen Namen — plattformspezifisch wählen
         import sys as _sys

@@ -677,15 +677,15 @@ class MainWindow(QMainWindow):
         ]
         if sys.platform == "darwin":
             win_pairs.append((
-                QKeySequence("Meta+Shift+N"),
+                QKeySequence("Ctrl+Shift+N"),
                 lambda: self.current_browser and self.current_browser._new_file(),
             ))
             win_pairs.append((
-                QKeySequence("Meta+Backspace"),
+                QKeySequence("Ctrl+Backspace"),
                 lambda: self.current_browser and self.current_browser._delete(),
             ))
             win_pairs.append((
-                QKeySequence("Meta+Shift+H"),
+                QKeySequence("Ctrl+H"),
                 self._toggle_show_hidden,
             ))
         else:
@@ -698,7 +698,7 @@ class MainWindow(QMainWindow):
                 lambda: self.current_browser and self.current_browser._delete(),
             ))
             win_pairs.append((
-                QKeySequence("Ctrl+Shift+H"),
+                QKeySequence("Ctrl+H"),
                 self._toggle_show_hidden,
             ))
 
@@ -809,7 +809,7 @@ class MainWindow(QMainWindow):
         self._a(m_view, "Split-Pane",       "F8",            self._toggle_split)
         self._a(m_view, "Vorschau",         "F9",            self._toggle_preview)
         m_view.addSeparator()
-        _hidden_hint = "Cmd+Shift+H" if sys.platform == "darwin" else "Ctrl+Shift+H"
+        _hidden_hint = "Cmd+Shift+H" if sys.platform == "darwin" else "Ctrl+H"
         self._a_show_hidden = self._a(
             m_view,
             f"Versteckte Dateien\t{_hidden_hint}",
