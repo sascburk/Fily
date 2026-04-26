@@ -293,11 +293,8 @@ class FileBrowser(QWidget):
             sc_new.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
             sc_new.activated.connect(self._open_sel_in_new_tab)
 
-        # Zusätzlich zu Del: Ctrl+Backspace für Löschen unter Linux/Windows.
-        if not sys.platform.startswith("darwin"):
-            sc_del = QShortcut(QKeySequence("Ctrl+Backspace"), self)
-            sc_del.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
-            sc_del.activated.connect(self._delete)
+        # Papierkorb: Cmd+Backspace (macOS) bzw. Delete / Ctrl+Backspace (Win/Linux)
+        # liegen in MainWindow (WindowShortcut), damit es auch aus der Favoritenleiste geht.
 
     # ── Navigation ────────────────────────────────────────────────────────────
     def navigate(self, path: str):

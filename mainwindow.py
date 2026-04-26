@@ -660,10 +660,18 @@ class MainWindow(QMainWindow):
                 QKeySequence("Meta+Shift+N"),
                 lambda: self.current_browser and self.current_browser._new_file(),
             ))
+            win_pairs.append((
+                QKeySequence("Meta+Backspace"),
+                lambda: self.current_browser and self.current_browser._delete(),
+            ))
         else:
             win_pairs.append((
                 QKeySequence("Ctrl+Shift+N"),
                 lambda: self.current_browser and self.current_browser._new_file(),
+            ))
+            win_pairs.append((
+                QKeySequence("Ctrl+Backspace"),
+                lambda: self.current_browser and self.current_browser._delete(),
             ))
 
         if sys.platform == "darwin":
@@ -756,11 +764,11 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         self._a(m, "Umbenennen",           "F2",      lambda: self.current_browser and self.current_browser._rename())
         self._a(m, "Mehrfach umbenennen",  "",        lambda: self.current_browser and self.current_browser._batch_rename())
-        trash_action = self._a(m, "In Papierkorb", callback=lambda: self.current_browser and self.current_browser._delete())
         if sys.platform == "darwin":
-            trash_action.setShortcut("Ctrl+Backspace")
+            self._a(m, "In Papierkorb\tCmd+Backspace", "", lambda: self.current_browser and self.current_browser._delete())
         else:
-            trash_action.setShortcuts([QKeySequence("Delete"), QKeySequence("Ctrl+Backspace")])
+            trash_action = self._a(m, "In Papierkorb\tDelete  ·  Ctrl+Backspace", "", lambda: self.current_browser and self.current_browser._delete())
+            trash_action.setShortcut(QKeySequence("Delete"))
         m.addSeparator()
         self._a(m, "Rückgängig",           "Ctrl+Z",  lambda: self.current_browser and self.current_browser._undo())
 

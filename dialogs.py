@@ -97,7 +97,7 @@ def _shortcut_table() -> list[tuple[str, str]]:
     """Gibt plattformspezifische Tastaturkürzel zurück."""
     is_mac = sys.platform == "darwin"
     cmd    = "Cmd" if is_mac else "Ctrl"
-    delete = "Cmd+Backspace" if is_mac else "Delete"
+    delete = "Cmd+Backspace" if is_mac else "Delete / Ctrl+Backspace"
 
     tab_next = "Cmd+Shift+→" if is_mac else "Ctrl+Tab"
     tab_prev = "Cmd+Shift+←" if is_mac else "Ctrl+Shift+Tab"
