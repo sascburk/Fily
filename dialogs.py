@@ -136,6 +136,7 @@ def _shortcut_table() -> list[tuple[str, str]]:
         ("In Papierkorb",            delete),
         ("Rückgängig",               f"{cmd}+Z"),
         ("Neuer Ordner",             f"{cmd}+N"),
+        ("Neue Datei",               f"{cmd}+Shift+N"),
         ("", ""),
         ("Sonstiges", ""),
         ("Beenden",                  f"{cmd}+Q"),

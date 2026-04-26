@@ -655,6 +655,16 @@ class MainWindow(QMainWindow):
              lambda: self.current_browser and self.current_browser._focus_addr()),
             (Qt.Key.Key_Space, self._toggle_preview),
         ]
+        if sys.platform == "darwin":
+            win_pairs.append((
+                QKeySequence("Meta+Shift+N"),
+                lambda: self.current_browser and self.current_browser._new_file(),
+            ))
+        else:
+            win_pairs.append((
+                QKeySequence("Ctrl+Shift+N"),
+                lambda: self.current_browser and self.current_browser._new_file(),
+            ))
 
         if sys.platform == "darwin":
             # macOS: Cmd+Shift+←/→ via App-Event-Filter
@@ -724,8 +734,9 @@ class MainWindow(QMainWindow):
         # ── Datei ─────────────────────────────────────────────────────────────
         m = mb.addMenu("Datei")
         self._a(m, "Neuer Ordner",  "Ctrl+N",  lambda: self.current_browser and self.current_browser._new_folder())
-        new_file_sc = "Meta+Shift+N" if sys.platform == "darwin" else "Ctrl+Shift+N"
-        self._a(m, "Neue Datei", new_file_sc, lambda: self.current_browser and self.current_browser._new_file())
+        # Shortcut läuft über QShortcut in _install_window_shortcuts (zuverlässig mit Fokus in Liste/Favoriten).
+        _nf_hint = "Cmd+Shift+N" if sys.platform == "darwin" else "Ctrl+Shift+N"
+        self._a(m, f"Neue Datei\t{_nf_hint}", "", lambda: self.current_browser and self.current_browser._new_file())
         self._a(m, "Neuer Tab",     "Ctrl+T",  self._new_tab)
         self._a(m, "Tab schließen", "Ctrl+W",  lambda: self._close_tab(self.tabs.currentIndex()))
         m.addSeparator()
