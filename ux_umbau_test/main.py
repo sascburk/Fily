@@ -12,7 +12,7 @@ from pathlib import Path
 import traceback
 
 from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtCore import QSettings, Qt, QTimer
+from PySide6.QtCore import QSettings, QTimer
 from PySide6.QtGui import QIcon, QColor, QPalette
 
 from config import APP_NAME, ORG_NAME, SK_FDA_HINT, SK_FDA_FIRST_LAUNCH_DONE, asset_path
@@ -23,36 +23,21 @@ from logger import log_line_force
 def _linux_is_dark() -> bool:
     """Erkennt Dark Mode auf Linux.
 
-    Reihenfolge: gsettings (color-scheme, gtk-theme) → GTK-Config-Dateien
-    → dconf (letzter Fallback).
-    Hinweis: GNOME/Fedora liefert bei color-scheme oft "default". Das ist
-    nicht aussagekräftig genug; dann werden weitere Quellen geprüft.
+    Reihenfolge: gsettings → GTK-Config-Dateien → dconf (letzter Fallback).
+    Bug B6 Fix: dconf-Binärparsing ist jetzt letzter Fallback mit Try/Except.
+    Wenn gsettings antwortet (kein Fehler), gilt sein Ergebnis — egal ob dark
+    oder nicht; weitere Methoden werden dann nicht mehr geprüft.
     """
-    # Methode 1a: GNOME color-scheme
+    # Methode 1: GNOME gsettings (zuverlässigste Methode)
     try:
         out = subprocess.check_output(
             ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
             stderr=subprocess.DEVNULL, timeout=2,
         ).decode().strip().strip("'\"")
-        low = out.lower()
-        if "prefer-dark" in low:
-            return True
-        if "prefer-light" in low:
-            return False
-        # z. B. "default" → nicht eindeutig, nächste Methode prüfen
+        # gsettings hat geantwortet → Ergebnis ist definitiv, kein weiteres Prüfen
+        return "dark" in out.lower()
     except Exception:
         pass  # gsettings nicht verfügbar → nächste Methode
-
-    # Methode 1b: GNOME gtk-theme (z. B. "Adwaita-dark")
-    try:
-        theme = subprocess.check_output(
-            ["gsettings", "get", "org.gnome.desktop.interface", "gtk-theme"],
-            stderr=subprocess.DEVNULL, timeout=2,
-        ).decode().strip().strip("'\"").lower()
-        if theme.endswith("-dark") or "dark" in theme:
-            return True
-    except Exception:
-        pass
 
     # Methode 2: GTK-Config-Dateien (~/.config/gtk-4.0 oder gtk-3.0)
     for conf in [
@@ -63,9 +48,7 @@ def _linux_is_dark() -> bool:
             text = conf.read_text(encoding="utf-8").lower()
             if ("gtk-application-prefer-dark-theme=1" in text or
                     "gtk-application-prefer-dark-theme=true" in text or
-                    "color-scheme=prefer-dark" in text or
-                    "gtk-theme-name=adwaita-dark" in text or
-                    "gtk-theme=adwaita-dark" in text):
+                    "color-scheme=prefer-dark" in text):
                 return True
         except Exception:
             pass
@@ -193,15 +176,6 @@ def main():
     # Linux: Umgebung vor QApplication vorbereiten.
     _linux_dark = False
     if sys.platform.startswith("linux"):
-        # Qt-Wayland: Menüleiste oft nur beim ersten Klick korrekt, danach
-        # „Release“ löst ersten Eintrag aus. XWayland (xcb) ist der stabile Workaround.
-        # Opt-out: FILLY_USE_WAYLAND=1  oder  QT_QPA_PLATFORM=wayland explizit setzen.
-        _wl = bool(os.environ.get("WAYLAND_DISPLAY"))
-        _want_wl = os.environ.get("FILLY_USE_WAYLAND", "").lower() in ("1", "true", "yes")
-        _qpa = os.environ.get("QT_QPA_PLATFORM", "").strip().lower()
-        if _wl and not _want_wl and _qpa in ("", "wayland"):
-            os.environ["QT_QPA_PLATFORM"] = "xcb"
-
         # Ubuntu: disable global AppMenu integration — prevents menu bar from
         # disappearing immediately after click (BAMF/Unity proxy hijacks Qt menus).
         os.environ["UBUNTU_MENUPROXY"] = "0"
@@ -212,16 +186,14 @@ def main():
         # von der Desktop-Session geerbt wird.
         os.environ["GTK_MODULES"] = ""
 
-        # Qt-Logging: harmlose Meldungen unterdrücken (Portal, Wayland-TextInput).
+        # Unterdrücke Qt-D-Bus-Portal-Warnung "Could not register app ID"
+        # — tritt auf wenn die App via Symlink gestartet wird und die D-Bus-
+        # Verbindung bereits eine App-ID hat; die App funktioniert trotzdem.
         _existing_rules = os.environ.get("QT_LOGGING_RULES", "")
-        _qt_log_parts: list[str] = []
-        for _rule in ("qt.qpa.services=false", "qt.qpa.wayland.textinput=false"):
-            if _rule not in _existing_rules:
-                _qt_log_parts.append(_rule)
-        if _qt_log_parts:
-            _merged = ";".join(_qt_log_parts)
+        _portal_rule = "qt.qpa.services=false"
+        if _portal_rule not in _existing_rules:
             os.environ["QT_LOGGING_RULES"] = (
-                f"{_existing_rules};{_merged}" if _existing_rules else _merged
+                f"{_existing_rules};{_portal_rule}" if _existing_rules else _portal_rule
             )
 
         # Dark-Mode-Erkennung VOR QApplication, damit QT_STYLE_OVERRIDE greift
@@ -233,12 +205,6 @@ def main():
             # Fusion-Palette nach dem Start wieder überschreiben.
             os.environ.pop("QT_QPA_PLATFORMTHEME", None)
             os.environ["QT_STYLE_OVERRIDE"] = "Fusion"
-
-        # Menüleiste komplett von Qt zeichnen (vor QApplication zwingend).
-        # Verhindert unter Ubuntu/GNOME/Wayland oft: Menü klappt auf und
-        # schließt beim Loslassen sofort + erster Eintrag wird ausgelöst.
-        os.environ.setdefault("QT_XCB_NO_NATIVE_MENUBAR", "1")
-        QApplication.setAttribute(Qt.ApplicationAttribute.AA_DontUseNativeMenuBar, True)
 
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
